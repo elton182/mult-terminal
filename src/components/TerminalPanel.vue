@@ -76,18 +76,32 @@ function flatIdx(c: number, r: number) {
   return i + r
 }
 
-/** Terminal vizinho na direção — null se inexistente */
+/** Terminal vizinho na direção — null se não existe slot válido com terminal */
 function neighbor(dir: 'up' | 'down' | 'left' | 'right') {
   const { col, row, columns } = props
-  if (dir === 'up')   return store.list[flatIdx(col, row - 1)]            ?? null
-  if (dir === 'down') return store.list[flatIdx(col, row + 1)]            ?? null
-  if (dir === 'left') {
-    const r = Math.min(row, (columns[col - 1] ?? 0) - 1)
-    return col > 0 ? store.list[flatIdx(col - 1, r)] ?? null : null
+
+  if (dir === 'up') {
+    // deve haver uma linha acima dentro da mesma coluna
+    if (row <= 0) return null
+    return store.list[flatIdx(col, row - 1)] ?? null
   }
+
+  if (dir === 'down') {
+    // deve haver uma linha abaixo dentro da mesma coluna
+    if (row >= columns[col] - 1) return null
+    return store.list[flatIdx(col, row + 1)] ?? null
+  }
+
+  if (dir === 'left') {
+    if (col <= 0) return null
+    const r = Math.min(row, columns[col - 1] - 1)
+    return store.list[flatIdx(col - 1, r)] ?? null
+  }
+
   // right
-  const r = Math.min(row, (columns[col + 1] ?? 0) - 1)
-  return col < columns.length - 1 ? store.list[flatIdx(col + 1, r)] ?? null : null
+  if (col >= columns.length - 1) return null
+  const r = Math.min(row, columns[col + 1] - 1)
+  return store.list[flatIdx(col + 1, r)] ?? null
 }
 
 function canMove(dir: 'up' | 'down' | 'left' | 'right') {

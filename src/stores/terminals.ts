@@ -90,9 +90,10 @@ export const useTerminalsStore = defineStore('terminals', {
       const i = this.terminals.findIndex((t) => t.id === id1)
       const j = this.terminals.findIndex((t) => t.id === id2)
       if (i === -1 || j === -1 || i === j) return
-      const tmp = this.terminals[i]
-      this.terminals[i] = this.terminals[j]
-      this.terminals[j] = tmp
+      // Cria um novo array para garantir que o Vue detecte a mudança
+      const next = [...this.terminals]
+      ;[next[i], next[j]] = [next[j], next[i]]
+      this.terminals = next
     },
   },
 })

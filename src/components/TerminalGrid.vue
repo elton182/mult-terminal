@@ -16,6 +16,7 @@
         <template v-if="rowCount === 1">
           <TerminalPanel
             v-if="terminalAt(ci, 0)"
+            :key="terminalAt(ci, 0)!.id"
             :ref="(el) => setRef(terminalAt(ci, 0)!.id, el)"
             :terminal-id="terminalAt(ci, 0)!.id"
             :shell-type="terminalAt(ci, 0)!.shellType"
@@ -41,6 +42,7 @@
           >
             <TerminalPanel
               v-if="terminalAt(ci, ri - 1)"
+              :key="terminalAt(ci, ri - 1)!.id"
               :ref="(el) => setRef(terminalAt(ci, ri - 1)!.id, el)"
               :terminal-id="terminalAt(ci, ri - 1)!.id"
               :shell-type="terminalAt(ci, ri - 1)!.shellType"
