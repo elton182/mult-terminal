@@ -21,7 +21,6 @@
             :shell-type="terminalAt(ci, 0)!.shellType"
             :color="terminalAt(ci, 0)!.color"
             :type="terminalAt(ci, 0)!.type"
-            @swap="store.swap"
           />
           <EmptySlot v-else @open="emit('new-terminal')" />
         </template>
@@ -44,7 +43,6 @@
               :shell-type="terminalAt(ci, ri - 1)!.shellType"
               :color="terminalAt(ci, ri - 1)!.color"
               :type="terminalAt(ci, ri - 1)!.type"
-              @swap="store.swap"
             />
             <EmptySlot v-else @open="emit('new-terminal')" />
           </pane>
