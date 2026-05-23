@@ -32,6 +32,7 @@
           @click="move('right')"
         >→</button>
       </div>
+      <button class="btn-close" title="Fechar terminal (Ctrl+W)" @click="store.close(terminalId)">✕</button>
     </div>
 
     <div class="xterm-container" ref="containerRef" />
@@ -165,6 +166,26 @@ defineExpose({ fit })
   background: var(--bg-overlay);
   color: var(--accent-blue);
   border-color: var(--accent-blue);
+}
+
+.btn-close {
+  margin-left: auto;
+  margin-right: 6px;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.btn-close:hover {
+  background: var(--accent-red-bg);
+  color: var(--accent-red);
+  border-color: var(--accent-red);
 }
 
 .xterm-container {
