@@ -36,9 +36,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useSshProfilesStore } from '@/stores/ssh-profiles'
+import { useThemeStore } from '@/stores/theme'
 import { LAYOUT_PRESETS } from '@/types/layouts'
 import Toolbar from '@/components/Toolbar.vue'
 import TerminalGrid from '@/components/TerminalGrid.vue'
@@ -49,7 +50,10 @@ import { useKeyboard as useKb } from '@/composables/useKeyboard'
 
 const store = useTerminalsStore()
 const sshStore = useSshProfilesStore()
+const themeStore = useThemeStore()
 const gridRef = ref<InstanceType<typeof TerminalGrid>>()
+
+onMounted(() => themeStore.load())
 
 const columns = ref<number[]>([1])
 const activeId = ref<string>()
@@ -133,7 +137,7 @@ async function onNewTerminal(opts: { type: string; profileId?: string }) {
 </script>
 
 <style>
-:root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+:root { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 body, #app, .app { width: 100vw; height: 100vh; overflow: hidden; }
-.app { display: flex; flex-direction: column; background: #0d1117; color: #c9d1d9; }
+.app { display: flex; flex-direction: column; background: var(--bg-base); color: var(--text-primary); }
 </style>

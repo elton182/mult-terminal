@@ -1,34 +1,11 @@
-import { onMounted, onUnmounted, type Ref } from 'vue'
+import { onMounted, onUnmounted, watch, type Ref } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-
-const TERMINAL_THEME = {
-  background: '#0d1117',
-  foreground: '#c9d1d9',
-  cursor: '#58a6ff',
-  cursorAccent: '#0d1117',
-  selectionBackground: '#264f7840',
-  black: '#484f58',
-  red: '#ff7b72',
-  green: '#3fb950',
-  yellow: '#d29922',
-  blue: '#58a6ff',
-  magenta: '#bc8cff',
-  cyan: '#76e3ea',
-  white: '#b1bac4',
-  brightBlack: '#6e7681',
-  brightRed: '#ffa198',
-  brightGreen: '#56d364',
-  brightYellow: '#e3b341',
-  brightBlue: '#79c0ff',
-  brightMagenta: '#d2a8ff',
-  brightCyan: '#87deea',
-  brightWhite: '#f0f6fc',
-}
+import { useThemeStore, XTERM_THEMES } from '@/stores/theme'
 
 export function useTerminal(
   terminalId: string,
@@ -42,14 +19,16 @@ export function useTerminal(
   const unlisteners: UnlistenFn[] = []
   let resizeTimer: ReturnType<typeof setTimeout>
 
-  const writeCommand = terminalType === 'local' ? 'pty_write' : 'ssh_write'
+  const writeCommand  = terminalType === 'local' ? 'pty_write'  : 'ssh_write'
   const resizeCommand = terminalType === 'local' ? 'pty_resize' : 'ssh_resize'
+
+  const themeStore = useThemeStore()
 
   onMounted(async () => {
     if (!containerRef.value) return
 
     terminal = new Terminal({
-      theme: TERMINAL_THEME,
+      theme: XTERM_THEMES[themeStore.theme],
       fontFamily: '"JetBrains Mono", "Cascadia Code", "Consolas", monospace',
       fontSize: 14,
       lineHeight: 1.2,
@@ -104,6 +83,12 @@ export function useTerminal(
     })
     resizeObserver.observe(containerRef.value)
   })
+
+  // Atualiza tema do xterm quando o tema da UI muda
+  watch(
+    () => themeStore.theme,
+    (t) => { if (terminal) terminal.options.theme = XTERM_THEMES[t] },
+  )
 
   onUnmounted(() => {
     clearTimeout(resizeTimer)

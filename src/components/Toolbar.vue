@@ -101,35 +101,35 @@ const LayoutIcon = defineComponent({
   gap: 6px;
   height: 38px;
   padding: 0 8px;
-  background: #010409;
-  border-bottom: 1px solid #21262d;
+  background: var(--bg-deep);
+  border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
   user-select: none;
 }
-.app-name { font-size: 11px; font-weight: 700; color: #58a6ff; letter-spacing: 1px; flex-shrink: 0; }
+.app-name { font-size: 11px; font-weight: 700; color: var(--accent-blue); letter-spacing: 1px; flex-shrink: 0; }
 
 .tabs { flex: 1; display: flex; align-items: center; gap: 2px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; }
 .tabs::-webkit-scrollbar { display: none; }
 
-.tab { display: flex; align-items: center; gap: 5px; padding: 4px 10px; background: transparent; border: none; border-bottom: 2px solid transparent; color: #6e7681; cursor: pointer; font-size: 12px; white-space: nowrap; border-radius: 4px 4px 0 0; flex-shrink: 0; }
-.tab:hover { color: #c9d1d9; background: #161b22; }
-.tab.active { color: #c9d1d9; border-bottom-color: #58a6ff; background: #0d1117; }
+.tab { display: flex; align-items: center; gap: 5px; padding: 4px 10px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; white-space: nowrap; border-radius: 4px 4px 0 0; flex-shrink: 0; }
+.tab:hover { color: var(--text-primary); background: var(--bg-surface); }
+.tab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); background: var(--bg-base); }
 .tab.disconnected { opacity: 0.5; }
 
 .tab-close { background: none; border: none; color: inherit; cursor: pointer; padding: 1px 3px; font-size: 10px; border-radius: 3px; opacity: 0; }
 .tab:hover .tab-close { opacity: 0.6; }
-.tab-close:hover { background: #ff7b7233; color: #ff7b72; opacity: 1 !important; }
+.tab-close:hover { background: var(--accent-red-bg); color: var(--accent-red); opacity: 1 !important; }
 
 .right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 
-.layout-group { display: flex; align-items: center; gap: 2px; background: #161b22; border: 1px solid #21262d; border-radius: 6px; padding: 2px; }
-.layout-btn { background: none; border: none; color: #484f58; cursor: pointer; padding: 3px 5px; border-radius: 4px; display: flex; align-items: center; transition: color 0.1s, background 0.1s; }
-.layout-btn:hover { color: #8b949e; background: #21262d; }
-.layout-btn.active { color: #58a6ff; background: #0d1117; }
+.layout-group { display: flex; align-items: center; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px; }
+.layout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; display: flex; align-items: center; transition: color 0.1s, background 0.1s; }
+.layout-btn:hover { color: var(--text-secondary); background: var(--bg-overlay); }
+.layout-btn.active { color: var(--accent-blue); background: var(--bg-base); }
 
-.divider { width: 1px; height: 18px; background: #21262d; margin: 0 2px; }
+.divider { width: 1px; height: 18px; background: var(--border-subtle); margin: 0 2px; }
 
-.right button { background: none; border: none; color: #6e7681; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 14px; }
-.right button:hover { background: #21262d; color: #c9d1d9; }
-.btn-new { font-size: 18px !important; font-weight: 300; color: #3fb950 !important; padding: 2px 8px !important; }
+.right button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 14px; }
+.right button:hover { background: var(--bg-overlay); color: var(--text-primary); }
+.btn-new { font-size: 18px !important; font-weight: 300; color: var(--accent-green) !important; padding: 2px 8px !important; }
 </style>

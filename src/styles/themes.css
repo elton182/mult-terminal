@@ -1,0 +1,50 @@
+/* ── Tema padrão: GitHub Dark ────────────────────────────── */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-deep:       #010409;
+  --bg-base:       #0d1117;
+  --bg-surface:    #161b22;
+  --bg-overlay:    #21262d;
+
+  --border-subtle: #21262d;
+  --border-default:#30363d;
+
+  --text-primary:  #c9d1d9;
+  --text-secondary:#8b949e;
+  --text-muted:    #6e7681;
+
+  --accent-blue:        #58a6ff;
+  --accent-green:       #3fb950;
+  --accent-green-dark:  #238636;
+  --accent-green-hover: #2ea043;
+  --accent-red:         #ff7b72;
+  --accent-red-bg:      rgba(255,123,114,.13);
+  --accent-orange:      #d29922;
+}
+
+/* ── Tema alto contraste ─────────────────────────────────── */
+[data-theme="high-contrast"] {
+  color-scheme: dark;
+
+  --bg-deep:       #000000;
+  --bg-base:       #0a0a0a;
+  --bg-surface:    #141414;
+  --bg-overlay:    #1e1e1e;
+
+  --border-subtle: #555555;
+  --border-default:#999999;
+
+  --text-primary:  #ffffff;
+  --text-secondary:#e8e8e8;
+  --text-muted:    #c0c0c0;
+
+  --accent-blue:        #4fc3f7;
+  --accent-green:       #69ff47;
+  --accent-green-dark:  #00b300;
+  --accent-green-hover: #00cc00;
+  --accent-red:         #ff6e6e;
+  --accent-red-bg:      rgba(255,110,110,.18);
+  --accent-orange:      #ffd600;
+}

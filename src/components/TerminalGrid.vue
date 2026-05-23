@@ -138,15 +138,15 @@ defineExpose({ fitAll })
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: #6e7681;
+  color: var(--text-muted);
 }
 
 .empty-icon { font-size: 40px; opacity: 0.3; }
 .empty p { font-size: 14px; }
 .hint { font-size: 12px; }
 kbd {
-  background: #21262d;
-  border: 1px solid #30363d;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-default);
   border-radius: 4px;
   padding: 1px 5px;
   font-size: 11px;
@@ -155,18 +155,18 @@ kbd {
 .empty button {
   margin-top: 4px;
   padding: 7px 18px;
-  background: #238636;
+  background: var(--accent-green-dark);
   color: #fff;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
 }
-.empty button:hover { background: #2ea043; }
+.empty button:hover { background: var(--accent-green-hover); }
 
 /* Splitpanes overrides */
 :deep(.splitpanes__splitter) {
-  background: #21262d !important;
+  background: var(--border-subtle) !important;
   border: none !important;
   position: relative;
   z-index: 1;
@@ -178,7 +178,7 @@ kbd {
 }
 :deep(.splitpanes__splitter:hover),
 :deep(.splitpanes__splitter:active) {
-  background: #58a6ff !important;
+  background: var(--accent-blue) !important;
 }
 :deep(.splitpanes--horizontal > .splitpanes__splitter) {
   height: 4px !important;
@@ -199,12 +199,12 @@ kbd {
   justify-content: center;
   height: 100%;
   gap: 6px;
-  color: #30363d;
+  color: var(--border-default);
   cursor: pointer;
   transition: color 0.15s, background 0.15s;
-  background: #0a0d11;
+  background: var(--bg-base);
 }
-.empty-slot:hover { color: #58a6ff; background: #0d1117; }
+.empty-slot:hover { color: var(--accent-blue); background: var(--bg-surface); }
 .empty-slot-plus { font-size: 32px; font-weight: 200; line-height: 1; }
 .empty-slot-label { font-size: 11px; letter-spacing: 0.5px; }
 </style>

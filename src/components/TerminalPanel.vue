@@ -81,7 +81,7 @@ defineExpose({ fit })
   align-items: center;
   height: 4px;
   overflow: hidden;
-  background: #010409;
+  background: var(--bg-deep);
   border-bottom: 1px solid transparent;
   transition: height 0.15s, border-color 0.15s;
   flex-shrink: 0;
@@ -89,11 +89,11 @@ defineExpose({ fit })
 
 .terminal-panel:hover .panel-header {
   height: 18px;
-  border-bottom-color: #21262d;
+  border-bottom-color: var(--border-subtle);
 }
 
 .drag-handle {
-  color: #30363d;
+  color: var(--border-default);
   cursor: grab;
   padding: 0 8px;
   font-size: 14px;
@@ -102,7 +102,7 @@ defineExpose({ fit })
   transition: color 0.1s;
 }
 
-.drag-handle:hover  { color: #8b949e; }
+.drag-handle:hover  { color: var(--text-secondary); }
 .drag-handle:active { cursor: grabbing; }
 
 .xterm-container {
