@@ -1,17 +1,37 @@
 <template>
   <div
     class="terminal-panel"
-    :class="{ 'drop-over': isOver }"
     :style="borderStyle"
     :data-terminal-id="terminalId"
   >
-    <!-- Alça de drag: 4 px colapsada, 18 px no hover -->
+    <!-- Barra de controle — visível no hover -->
     <div class="panel-header">
-      <span
-        class="drag-handle"
-        title="Arrastar para mover terminal"
-        @pointerdown.prevent="onPointerDown"
-      >⠿</span>
+      <div class="move-btns">
+        <button
+          v-if="canMove('left')"
+          class="mv"
+          title="Mover à esquerda"
+          @click="move('left')"
+        >←</button>
+        <button
+          v-if="canMove('up')"
+          class="mv"
+          title="Mover para cima"
+          @click="move('up')"
+        >↑</button>
+        <button
+          v-if="canMove('down')"
+          class="mv"
+          title="Mover para baixo"
+          @click="move('down')"
+        >↓</button>
+        <button
+          v-if="canMove('right')"
+          class="mv"
+          title="Mover à direita"
+          @click="move('right')"
+        >→</button>
+      </div>
     </div>
 
     <div class="xterm-container" ref="containerRef" />
@@ -22,13 +42,15 @@
 import { ref, computed } from 'vue'
 import { useTerminal } from '@/composables/useTerminal'
 import { useTerminalsStore } from '@/stores/terminals'
-import { startDrag, draggingId, overTargetId } from '@/composables/useDrag'
 
 const props = defineProps<{
   terminalId: string
-  shellType: string
-  color?: string
-  type: 'local' | 'ssh'
+  shellType:  string
+  color?:     string
+  type:       'local' | 'ssh'
+  col:        number
+  row:        number
+  columns:    number[]   // e.g. [2, 3, 1]
 }>()
 
 const containerRef = ref<HTMLElement>()
@@ -38,13 +60,6 @@ const borderStyle = computed(() =>
   props.color ? { borderTop: `2px solid ${props.color}` } : {},
 )
 
-/** Este painel é o destino atual do drag? */
-const isOver = computed(
-  () =>
-    overTargetId.value === props.terminalId &&
-    draggingId.value !== props.terminalId,
-)
-
 const { fit } = useTerminal(
   props.terminalId,
   containerRef,
@@ -52,8 +67,36 @@ const { fit } = useTerminal(
   () => store.markDisconnected(props.terminalId),
 )
 
-function onPointerDown(e: PointerEvent) {
-  startDrag(props.terminalId, props.shellType, e, (a, b) => store.swap(a, b))
+// ── Posição e navegação ───────────────────────────────────
+
+/** Índice plano no store.list para (col, row) */
+function flatIdx(c: number, r: number) {
+  let i = 0
+  for (let ci = 0; ci < c; ci++) i += props.columns[ci]
+  return i + r
+}
+
+/** Terminal vizinho na direção — null se inexistente */
+function neighbor(dir: 'up' | 'down' | 'left' | 'right') {
+  const { col, row, columns } = props
+  if (dir === 'up')   return store.list[flatIdx(col, row - 1)]            ?? null
+  if (dir === 'down') return store.list[flatIdx(col, row + 1)]            ?? null
+  if (dir === 'left') {
+    const r = Math.min(row, (columns[col - 1] ?? 0) - 1)
+    return col > 0 ? store.list[flatIdx(col - 1, r)] ?? null : null
+  }
+  // right
+  const r = Math.min(row, (columns[col + 1] ?? 0) - 1)
+  return col < columns.length - 1 ? store.list[flatIdx(col + 1, r)] ?? null : null
+}
+
+function canMove(dir: 'up' | 'down' | 'left' | 'right') {
+  return neighbor(dir) !== null
+}
+
+function move(dir: 'up' | 'down' | 'left' | 'right') {
+  const target = neighbor(dir)
+  if (target) store.swap(props.terminalId, target.id)
 }
 
 defineExpose({ fit })
@@ -66,20 +109,14 @@ defineExpose({ fit })
   flex-direction: column;
   height: 100%;
   overflow: hidden;
-  background: #0d1117;
-  transition: outline 0.08s;
+  background: var(--bg-base);
 }
 
-.terminal-panel.drop-over {
-  outline: 2px solid #58a6ff;
-  outline-offset: -2px;
-}
-
-/* Header colapsado (4 px) → 18 px no hover */
+/* Header: 0px colapsado → 22px no hover */
 .panel-header {
   display: flex;
   align-items: center;
-  height: 4px;
+  height: 0;
   overflow: hidden;
   background: var(--bg-deep);
   border-bottom: 1px solid transparent;
@@ -88,22 +125,33 @@ defineExpose({ fit })
 }
 
 .terminal-panel:hover .panel-header {
-  height: 18px;
+  height: 22px;
   border-bottom-color: var(--border-subtle);
 }
 
-.drag-handle {
-  color: var(--border-default);
-  cursor: grab;
-  padding: 0 8px;
-  font-size: 14px;
-  line-height: 1;
-  user-select: none;
-  transition: color 0.1s;
+.move-btns {
+  display: flex;
+  gap: 2px;
+  padding: 0 6px;
 }
 
-.drag-handle:hover  { color: var(--text-secondary); }
-.drag-handle:active { cursor: grabbing; }
+.mv {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.mv:hover {
+  background: var(--bg-overlay);
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
 
 .xterm-container {
   flex: 1;
