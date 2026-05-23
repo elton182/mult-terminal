@@ -86,7 +86,12 @@ impl SshSession {
         mut rx: mpsc::Receiver<SshControl>,
         app: AppHandle,
     ) -> anyhow::Result<()> {
-        let config = Arc::new(client::Config::default());
+        let config = Arc::new(client::Config {
+            // Envia keepalive a cada 15 s; desconecta após 3 falhas consecutivas
+            keepalive_interval: Some(std::time::Duration::from_secs(15)),
+            keepalive_max: 3,
+            ..Default::default()
+        });
         let mut session = client::connect(config, (host.as_str(), port), Handler)
             .await
             .with_context(|| format!("Não foi possível conectar a {}:{}", host, port))?;
