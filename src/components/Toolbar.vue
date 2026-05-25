@@ -4,7 +4,7 @@
 
     <div class="tabs">
       <div
-        v-for="terminal in store.list"
+        v-for="terminal in store.activeTerminals"
         :key="terminal.id"
         class="tab"
         :class="{ active: activeId === terminal.id, disconnected: !terminal.isConnected }"

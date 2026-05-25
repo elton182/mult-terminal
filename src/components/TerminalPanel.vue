@@ -1,6 +1,7 @@
 <template>
   <div
     class="terminal-panel"
+    :class="{ 'is-active': props.terminalId === props.activeId }"
     :style="borderStyle"
     :data-terminal-id="terminalId"
   >
@@ -52,6 +53,7 @@ const props = defineProps<{
   col:        number
   row:        number
   columns:    number[]   // e.g. [2, 3, 1]
+  activeId?:  string
 }>()
 
 const containerRef = ref<HTMLElement>()
@@ -77,41 +79,53 @@ function flatIdx(c: number, r: number) {
   return i + r
 }
 
-/** Terminal vizinho na direção — null se não existe slot válido com terminal */
-function neighbor(dir: 'up' | 'down' | 'left' | 'right') {
+/**
+ * Slot de grade na direção indicada — retorna col/row/idx se o SLOT DE LAYOUT
+ * existir, ou null se não houver posição adjacente na grade.
+ * (Não requer que haja um terminal no slot — apenas que o layout o preveja.)
+ */
+function neighborInfo(dir: 'up' | 'down' | 'left' | 'right'): { col: number; row: number; idx: number } | null {
   const { col, row, columns } = props
+  let nc: number, nr: number
 
   if (dir === 'up') {
-    // deve haver uma linha acima dentro da mesma coluna
     if (row <= 0) return null
-    return store.list[flatIdx(col, row - 1)] ?? null
-  }
+    nc = col; nr = row - 1
 
-  if (dir === 'down') {
-    // deve haver uma linha abaixo dentro da mesma coluna
+  } else if (dir === 'down') {
     if (row >= columns[col] - 1) return null
-    return store.list[flatIdx(col, row + 1)] ?? null
-  }
+    nc = col; nr = row + 1
 
-  if (dir === 'left') {
+  } else if (dir === 'left') {
     if (col <= 0) return null
-    const r = Math.min(row, columns[col - 1] - 1)
-    return store.list[flatIdx(col - 1, r)] ?? null
+    nc = col - 1; nr = Math.min(row, columns[col - 1] - 1)
+
+  } else { // right
+    if (col >= columns.length - 1) return null
+    nc = col + 1; nr = Math.min(row, columns[col + 1] - 1)
   }
 
-  // right
-  if (col >= columns.length - 1) return null
-  const r = Math.min(row, columns[col + 1] - 1)
-  return store.list[flatIdx(col + 1, r)] ?? null
+  return { col: nc, row: nr, idx: flatIdx(nc, nr) }
 }
 
+/** Seta aparece sempre que o slot adjacente existe no layout. */
 function canMove(dir: 'up' | 'down' | 'left' | 'right') {
-  return neighbor(dir) !== null
+  return neighborInfo(dir) !== null
 }
 
+/** Move o terminal:
+ *  - slot com terminal → troca (swap)
+ *  - slot vazio        → move (moveTo)
+ */
 function move(dir: 'up' | 'down' | 'left' | 'right') {
-  const target = neighbor(dir)
-  if (target) store.swap(props.terminalId, target.id)
+  const info = neighborInfo(dir)
+  if (!info) return
+  const target = store.list[info.idx]
+  if (target) {
+    store.swap(props.terminalId, target.id)
+  } else {
+    store.moveTo(props.terminalId, info.idx)
+  }
 }
 
 defineExpose({ fit })
@@ -125,6 +139,14 @@ defineExpose({ fit })
   height: 100%;
   overflow: hidden;
   background: var(--bg-base);
+  /* Highlight ring for active panel */
+  box-shadow: inset 0 0 0 0 transparent;
+  transition: box-shadow 0.15s;
+}
+
+/* Active panel: subtle inset ring in the accent colour */
+.terminal-panel.is-active {
+  box-shadow: inset 0 0 0 2px var(--accent-blue);
 }
 
 /* Header: 0px colapsado → 22px no hover */

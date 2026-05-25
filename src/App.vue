@@ -14,6 +14,7 @@
     <TerminalGrid
       ref="gridRef"
       :columns="columns"
+      :active-id="activeId"
       @new-terminal="showNewTerminal = true"
     />
 
@@ -99,15 +100,15 @@ function setLayout(cols: number[]) {
 }
 
 // ── Active tab tracking ───────────────────────────────────────────────────────
-watch(() => store.list, (list) => {
+watch(() => store.activeTerminals, (list) => {
   if (list.length === 0) { activeId.value = undefined; return }
   if (!list.find((t) => t.id === activeId.value)) {
     activeId.value = list[list.length - 1]?.id
   }
-}, { deep: true })
+})
 
 function cycleTerminal(dir: 1 | -1) {
-  const list = store.list
+  const list = store.activeTerminals
   if (list.length <= 1) return
   const idx = list.findIndex((t) => t.id === activeId.value)
   activeId.value = list[(idx + dir + list.length) % list.length].id
@@ -126,11 +127,10 @@ async function onNewTerminal(opts: { type: string; profileId?: string }) {
   } else {
     const id = await store.openLocal(opts.type)
     activeId.value = id
-    // Auto-expand layout if all slots are taken
+    // Auto-expand layout: if the new terminal didn't fit, add a new column
     const total = columns.value.reduce((a, b) => a + b, 0)
     if (store.list.length > total) {
-      const last = columns.value.length - 1
-      columns.value = [...columns.value.slice(0, last), columns.value[last] + 1]
+      columns.value = [...columns.value, 1]
     }
   }
 }

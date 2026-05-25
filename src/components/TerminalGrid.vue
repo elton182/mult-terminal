@@ -25,6 +25,7 @@
             :col="ci"
             :row="0"
             :columns="columns"
+            :active-id="activeId"
           />
           <EmptySlot v-else @open="emit('new-terminal')" />
         </template>
@@ -51,6 +52,7 @@
               :col="ci"
               :row="ri - 1"
               :columns="columns"
+              :active-id="activeId"
             />
             <EmptySlot v-else @open="emit('new-terminal')" />
           </pane>
@@ -77,7 +79,8 @@ import TerminalPanel from './TerminalPanel.vue'
 import type { TerminalState } from '@/types'
 
 const props = defineProps<{
-  columns: number[]  // e.g. [2, 3, 1] = 3 cols with 2, 3, 1 rows
+  columns: number[]   // e.g. [2, 3, 1] = 3 cols with 2, 3, 1 rows
+  activeId?: string
 }>()
 
 const emit = defineEmits<{ 'new-terminal': [] }>()
