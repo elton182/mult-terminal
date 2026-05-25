@@ -4,7 +4,7 @@
 
     <div class="tabs">
       <div
-        v-for="terminal in store.activeTerminals"
+        v-for="terminal in wsTerminals"
         :key="terminal.id"
         class="tab"
         :class="{ active: activeId === terminal.id, disconnected: !terminal.isConnected }"
@@ -15,13 +15,13 @@
         @keydown.enter="emit('activate', terminal.id)"
       >
         <span class="tab-icon">{{ shellIcon(terminal.shellType) }}</span>
-        <span class="tab-title">{{ terminal.title }}</span>
+        <span class="tab-title">{{ terminal.label || terminal.title }}</span>
         <button class="tab-close" @click.stop="emit('close', terminal.id)" title="Fechar (Ctrl+W)">✕</button>
       </div>
     </div>
 
     <div class="right">
-      <!-- Presets de layout -->
+      <!-- Layout presets -->
       <div class="layout-group">
         <button
           v-for="preset in LAYOUT_PRESETS"
@@ -38,29 +38,46 @@
       <div class="divider" />
 
       <button title="Perfis SSH" @click="emit('open-ssh-manager')">🔒</button>
-      <button title="Configurações  Ctrl+," @click="emit('open-settings')">⚙</button>
-      <button class="btn-new" title="Novo terminal  Ctrl+T" @click="emit('new-terminal')">+</button>
+      <button :title="`Configurações  ${PREFIX_LABEL} → ,`" @click="emit('open-settings')">⚙</button>
+      <button class="btn-new" :title="`Novo terminal  ${PREFIX_LABEL} → t`" @click="emit('new-terminal')">+</button>
+
+      <!-- Prefix-mode indicator -->
+      <Transition name="prefix">
+        <span v-if="prefixActive" class="prefix-badge">⌨ {{ PREFIX_LABEL }}</span>
+      </Transition>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h } from 'vue'
+import { computed, defineComponent, h } from 'vue'
 import { useTerminalsStore } from '@/stores/terminals'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import { LAYOUT_PRESETS } from '@/types/layouts'
+import { prefixActive, PREFIX_LABEL } from '@/composables/useKeyboard'
+import type { TerminalState } from '@/types'
 
 const props = defineProps<{ activeId?: string; columns: number[] }>()
 
 const emit = defineEmits<{
   'new-terminal': []
-  'set-layout': [columns: number[]]
-  activate: [id: string]
-  close: [id: string]
+  'set-layout':   [columns: number[]]
+  activate:       [id: string]
+  close:          [id: string]
   'open-ssh-manager': []
-  'open-settings': []
+  'open-settings':    []
 }>()
 
-const store = useTerminalsStore()
+const termStore = useTerminalsStore()
+const wsStore   = useWorkspacesStore()
+
+/** Only terminals that are in the active workspace (in slot order). */
+const wsTerminals = computed<TerminalState[]>(() =>
+  wsStore.activeTab.slots
+    .filter((s): s is string => s !== null)
+    .map((id) => termStore.byId(id))
+    .filter((t): t is TerminalState => t !== undefined),
+)
 
 function isActiveLayout(cols: number[]) {
   return JSON.stringify(cols) === JSON.stringify(props.columns ?? [1])
@@ -85,7 +102,14 @@ const LayoutIcon = defineComponent({
         const x = ci * (colW + GAP)
         const rowH = (H - GAP * (rows - 1)) / rows
         for (let ri = 0; ri < rows; ri++) {
-          rects.push(h('rect', { key: `${ci}-${ri}`, x: x.toFixed(1), y: (ri * (rowH + GAP)).toFixed(1), width: colW.toFixed(1), height: rowH.toFixed(1), rx: '1' }))
+          rects.push(h('rect', {
+            key: `${ci}-${ri}`,
+            x: x.toFixed(1),
+            y: (ri * (rowH + GAP)).toFixed(1),
+            width: colW.toFixed(1),
+            height: rowH.toFixed(1),
+            rx: '1',
+          }))
         }
       })
       return h('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, fill: 'currentColor', style: 'display:block' }, rects)
@@ -124,7 +148,7 @@ const LayoutIcon = defineComponent({
 
 .layout-group { display: flex; align-items: center; gap: 2px; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: 6px; padding: 2px; }
 .layout-btn { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 3px 5px; border-radius: 4px; display: flex; align-items: center; transition: color 0.1s, background 0.1s; }
-.layout-btn:hover { color: var(--text-secondary); background: var(--bg-overlay); }
+.layout-btn:hover  { color: var(--text-secondary); background: var(--bg-overlay); }
 .layout-btn.active { color: var(--accent-blue); background: var(--bg-base); }
 
 .divider { width: 1px; height: 18px; background: var(--border-subtle); margin: 0 2px; }
@@ -132,4 +156,23 @@ const LayoutIcon = defineComponent({
 .right button { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 14px; }
 .right button:hover { background: var(--bg-overlay); color: var(--text-primary); }
 .btn-new { font-size: 18px !important; font-weight: 300; color: var(--accent-green) !important; padding: 2px 8px !important; }
+
+/* Prefix-mode badge */
+.prefix-badge {
+  padding: 2px 8px;
+  background: var(--accent-blue);
+  color: var(--bg-deep);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Slide-in/out animation */
+.prefix-enter-active,
+.prefix-leave-active { transition: opacity 0.12s, transform 0.12s; }
+.prefix-enter-from,
+.prefix-leave-to   { opacity: 0; transform: scale(0.85); }
 </style>

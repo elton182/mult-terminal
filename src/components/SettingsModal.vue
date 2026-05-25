@@ -78,6 +78,9 @@ const themeStore = useThemeStore()
 const THEMES: { id: Theme; label: string }[] = [
   { id: 'dark',           label: 'Dark' },
   { id: 'high-contrast',  label: 'Alto Contraste' },
+  { id: 'dark-red',       label: 'Vermelho' },
+  { id: 'dark-green',     label: 'Verde' },
+  { id: 'overclock',      label: 'Overclock' },
 ]
 
 const desktopLabel = ref('Desktop')
@@ -178,6 +181,7 @@ function showMsg(msg: string, type: 'ok' | 'err') {
 /* ── Seletor de tema ───────────────────────────── */
 .theme-grid {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
@@ -213,6 +217,19 @@ function showMsg(msg: string, type: 'ok' | 'err') {
 .theme-preview[data-t="high-contrast"] {
   background: linear-gradient(180deg, #000 28%, #0a0a0a 28% 50%, #141414 50%);
   border-color: #666;
+}
+.theme-preview[data-t="dark-red"] {
+  background: linear-gradient(180deg, #0e0808 28%, #130c0c 28% 50%, #1e1212 50%);
+  border-color: #ff6b6b;
+}
+.theme-preview[data-t="dark-green"] {
+  background: linear-gradient(180deg, #010a03 28%, #050f07 28% 50%, #0c1a0e 50%);
+  border-color: #39d353;
+}
+.theme-preview[data-t="overclock"] {
+  background: linear-gradient(180deg, #080401 28%, #0e0703 28% 50%, #160c05 50%);
+  border-color: #39d353;
+  box-shadow: 0 0 8px #39d35340;   /* leve glow verde */
 }
 
 /* ── Linhas de configuração ────────────────────── */

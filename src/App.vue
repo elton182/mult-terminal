@@ -1,11 +1,13 @@
 <template>
   <div class="app">
+    <WorkspaceTabs />
+
     <Toolbar
-      :active-id="activeId"
-      :columns="columns"
+      :active-id="wsStore.activeTab.activeTerminalId"
+      :columns="wsStore.activeTab.columns"
       @new-terminal="showNewTerminal = true"
-      @set-layout="setLayout"
-      @activate="(id) => (activeId = id)"
+      @set-layout="(cols) => wsStore.setColumns(cols)"
+      @activate="(id) => wsStore.setActiveTerminal(id)"
       @close="closeTerminal"
       @open-ssh-manager="showSshManager = true"
       @open-settings="showSettings = true"
@@ -13,8 +15,9 @@
 
     <TerminalGrid
       ref="gridRef"
-      :columns="columns"
-      :active-id="activeId"
+      :columns="wsStore.activeTab.columns"
+      :slots="wsStore.activeTab.slots"
+      :active-id="wsStore.activeTab.activeTerminalId"
       @new-terminal="showNewTerminal = true"
     />
 
@@ -37,86 +40,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useTerminalsStore } from '@/stores/terminals'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import { useSshProfilesStore } from '@/stores/ssh-profiles'
 import { useThemeStore } from '@/stores/theme'
 import { LAYOUT_PRESETS } from '@/types/layouts'
+import WorkspaceTabs from '@/components/WorkspaceTabs.vue'
 import Toolbar from '@/components/Toolbar.vue'
 import TerminalGrid from '@/components/TerminalGrid.vue'
 import NewTerminalModal from '@/components/NewTerminalModal.vue'
 import SshManager from '@/components/SshManager.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
-import { useKeyboard as useKb } from '@/composables/useKeyboard'
+import { useKeyboard } from '@/composables/useKeyboard'
 
-const store = useTerminalsStore()
-const sshStore = useSshProfilesStore()
+const termStore = useTerminalsStore()
+const wsStore   = useWorkspacesStore()
+const sshStore  = useSshProfilesStore()
 const themeStore = useThemeStore()
 const gridRef = ref<InstanceType<typeof TerminalGrid>>()
 
 onMounted(() => themeStore.load())
 
-const columns = ref<number[]>([1])
-const activeId = ref<string>()
 const showNewTerminal = ref(false)
-const showSshManager = ref(false)
-const showSettings = ref(false)
+const showSshManager  = ref(false)
+const showSettings    = ref(false)
 
-// ── Keyboard shortcuts ────────────────────────────────────────────────────────
-useKb([
-  { key: 't', ctrl: true,
-    handler: () => { showNewTerminal.value = true } },
+// ── Prefix-based shortcuts (Ctrl+B → key) ────────────────────────────────────
+useKeyboard([
+  { key: 't', handler: () => { showNewTerminal.value = true } },
 
-  { key: 'w', ctrl: true,
-    handler: () => { if (activeId.value) closeTerminal(activeId.value) } },
+  { key: 'w', handler: () => {
+    const id = wsStore.activeTab.activeTerminalId
+    if (id) closeTerminal(id)
+  }},
 
-  { key: 'Tab', ctrl: true, shift: false,
-    handler: () => cycleTerminal(1) },
+  { key: 'n', handler: () => wsStore.cycleTerminal(1) },
+  { key: 'p', handler: () => wsStore.cycleTerminal(-1) },
 
-  { key: 'Tab', ctrl: true, shift: true,
-    handler: () => cycleTerminal(-1) },
+  { key: 'a', handler: () => wsStore.addTab() },
+  { key: ']', handler: () => {
+    const tabs = wsStore.list
+    const i = tabs.findIndex((t) => t.id === wsStore.activeTabId)
+    wsStore.setActive(tabs[(i + 1) % tabs.length].id)
+  }},
+  { key: '[', handler: () => {
+    const tabs = wsStore.list
+    const i = tabs.findIndex((t) => t.id === wsStore.activeTabId)
+    wsStore.setActive(tabs[(i - 1 + tabs.length) % tabs.length].id)
+  }},
 
-  { key: ',', ctrl: true,
-    handler: () => { showSettings.value = true } },
+  { key: ',', handler: () => { showSettings.value = true } },
 
-  // Layout presets Ctrl+Alt+1-6
+  // Layout presets: Ctrl+B → 1 … 6
   ...LAYOUT_PRESETS.map((p) => ({
     key: String(p.shortcutNum),
-    ctrl: true,
-    alt: true,
-    handler: () => setLayout(p.columns),
+    handler: () => wsStore.setColumns(p.columns),
   })),
 ])
 
-// ── Layout ────────────────────────────────────────────────────────────────────
-function setLayout(cols: number[]) {
-  columns.value = cols
-  // Auto-open terminals to fill new slots if needed
-  const totalSlots = cols.reduce((a, b) => a + b, 0)
-  const missing = totalSlots - store.list.length
-  if (missing > 0) {
-    // Just update layout — empty slots show "+" button
-  }
-}
-
-// ── Active tab tracking ───────────────────────────────────────────────────────
-watch(() => store.activeTerminals, (list) => {
-  if (list.length === 0) { activeId.value = undefined; return }
-  if (!list.find((t) => t.id === activeId.value)) {
-    activeId.value = list[list.length - 1]?.id
-  }
-})
-
-function cycleTerminal(dir: 1 | -1) {
-  const list = store.activeTerminals
-  if (list.length <= 1) return
-  const idx = list.findIndex((t) => t.id === activeId.value)
-  activeId.value = list[(idx + dir + list.length) % list.length].id
-}
+// ── Terminal lifecycle ────────────────────────────────────────────────────────
 
 async function closeTerminal(id: string) {
-  await store.close(id)
-  cycleTerminal(-1)
+  wsStore.removeTerminal(id)       // remove from workspace slot
+  await termStore.close(id)        // kill the PTY/SSH process
 }
 
 async function onNewTerminal(opts: { type: string; profileId?: string }) {
@@ -125,13 +112,9 @@ async function onNewTerminal(opts: { type: string; profileId?: string }) {
     await sshStore.load()
     showSshManager.value = true
   } else {
-    const id = await store.openLocal(opts.type)
-    activeId.value = id
-    // Auto-expand layout: if the new terminal didn't fit, add a new column
-    const total = columns.value.reduce((a, b) => a + b, 0)
-    if (store.list.length > total) {
-      columns.value = [...columns.value, 1]
-    }
+    const id = await termStore.openLocal(opts.type)
+    wsStore.placeTerminal(id)
+    wsStore.autoExpand()
   }
 }
 </script>

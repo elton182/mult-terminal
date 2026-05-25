@@ -48,3 +48,80 @@
   --accent-red-bg:      rgba(255,110,110,.18);
   --accent-orange:      #ffd600;
 }
+
+/* ── Tema Dark Red ───────────────────────────────────────── */
+[data-theme="dark-red"] {
+  color-scheme: dark;
+
+  --bg-deep:       #0e0808;
+  --bg-base:       #130c0c;
+  --bg-surface:    #1e1212;
+  --bg-overlay:    #281818;
+
+  --border-subtle: #3b1e1e;
+  --border-default:#542929;
+
+  --text-primary:  #e8d5d5;
+  --text-secondary:#a08888;
+  --text-muted:    #7a6060;
+
+  --accent-blue:        #ff6b6b;
+  --accent-green:       #3fb950;
+  --accent-green-dark:  #238636;
+  --accent-green-hover: #2ea043;
+  --accent-red:         #ff3333;
+  --accent-red-bg:      rgba(255,51,51,.15);
+  --accent-orange:      #d29922;
+}
+
+/* ── Tema Overclock (fundo âmbar-escuro, accent verde neon) ─ */
+[data-theme="overclock"] {
+  color-scheme: dark;
+
+  /* Fundos quentes, tom brasa/âmbar — como o cockpit overclock */
+  --bg-deep:       #080401;
+  --bg-base:       #0e0703;
+  --bg-surface:    #160c05;
+  --bg-overlay:    #1f1208;
+
+  --border-subtle: #2c1a08;
+  --border-default:#422810;
+
+  --text-primary:  #d8c8a0;   /* branco-âmbar */
+  --text-secondary:#9a8660;
+  --text-muted:    #6a5c3a;
+
+  /* Verde neon = accent principal (abas ativas, cursor, ring) */
+  --accent-blue:        #39d353;
+  --accent-green:       #56d364;
+  --accent-green-dark:  #186b24;
+  --accent-green-hover: #1f8a2e;
+  --accent-red:         #ff6b6b;
+  --accent-red-bg:      rgba(255,107,107,.14);
+  --accent-orange:      #f97316;   /* laranja como destaque secundário */
+}
+
+/* ── Tema Dark Green ─────────────────────────────────────── */
+[data-theme="dark-green"] {
+  color-scheme: dark;
+
+  --bg-deep:       #010a03;
+  --bg-base:       #050f07;
+  --bg-surface:    #0c1a0e;
+  --bg-overlay:    #132016;
+
+  --border-subtle: #1a3020;
+  --border-default:#244430;
+
+  --text-primary:  #c8e8cc;
+  --text-secondary:#7a9e80;
+  --text-muted:    #547060;
+
+  --accent-blue:        #39d353;
+  --accent-green:       #56d364;
+  --accent-green-dark:  #196f27;
+  --accent-green-hover: #21952e;
+  --accent-red:         #ff7b72;
+  --accent-red-bg:      rgba(255,123,114,.13);
+  --accent-orange:      #d29922;
+}

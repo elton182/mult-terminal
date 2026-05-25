@@ -1,18 +1,17 @@
 <template>
   <div class="grid-wrap">
-    <!-- Layout com colunas e linhas variáveis via splitpanes aninhados -->
     <splitpanes
-      v-if="store.list.length > 0 || totalSlots > 0"
+      v-if="totalSlots > 0"
       class="outer-panes"
       :horizontal="false"
-      @resized="onColResized"
+      @resized="fitAll"
     >
       <pane
         v-for="(rowCount, ci) in columns"
         :key="`col-${ci}`"
         :min-size="5"
       >
-        <!-- Coluna com uma única linha: renderiza direto (sem splitpanes extra) -->
+        <!-- Single row column: render directly without nested splitpanes -->
         <template v-if="rowCount === 1">
           <TerminalPanel
             v-if="terminalAt(ci, 0)"
@@ -21,6 +20,7 @@
             :terminal-id="terminalAt(ci, 0)!.id"
             :shell-type="terminalAt(ci, 0)!.shellType"
             :color="terminalAt(ci, 0)!.color"
+            :label="terminalAt(ci, 0)!.label"
             :type="terminalAt(ci, 0)!.type"
             :col="ci"
             :row="0"
@@ -30,11 +30,11 @@
           <EmptySlot v-else @open="emit('new-terminal')" />
         </template>
 
-        <!-- Coluna com múltiplas linhas: splitpanes horizontal aninhado -->
+        <!-- Multi-row column: nested horizontal splitpanes -->
         <splitpanes
           v-else
           :horizontal="true"
-          @resized="onRowResized"
+          @resized="fitAll"
         >
           <pane
             v-for="ri in rowCount"
@@ -48,6 +48,7 @@
               :terminal-id="terminalAt(ci, ri - 1)!.id"
               :shell-type="terminalAt(ci, ri - 1)!.shellType"
               :color="terminalAt(ci, ri - 1)!.color"
+              :label="terminalAt(ci, ri - 1)!.label"
               :type="terminalAt(ci, ri - 1)!.type"
               :col="ci"
               :row="ri - 1"
@@ -60,7 +61,7 @@
       </pane>
     </splitpanes>
 
-    <!-- Estado vazio (nenhum terminal aberto e layout [1]) -->
+    <!-- Empty workspace -->
     <div v-else class="empty">
       <div class="empty-icon">⬛</div>
       <p>Nenhum terminal aberto</p>
@@ -79,25 +80,28 @@ import TerminalPanel from './TerminalPanel.vue'
 import type { TerminalState } from '@/types'
 
 const props = defineProps<{
-  columns: number[]   // e.g. [2, 3, 1] = 3 cols with 2, 3, 1 rows
+  columns:  number[]           // e.g. [2, 3, 1]
+  slots:    (string | null)[]  // terminal IDs from workspace store
   activeId?: string
 }>()
 
 const emit = defineEmits<{ 'new-terminal': [] }>()
 
-const store = useTerminalsStore()
+const termStore = useTerminalsStore()
 const panelRefs: Record<string, InstanceType<typeof TerminalPanel> | null> = {}
 
 const totalSlots = computed(() =>
   props.columns.reduce((a, b) => a + b, 0),
 )
 
-/** Returns the terminal assigned to grid position (col, row) */
+/** Terminal at grid position (col, row) — looked up from workspace slots. */
 function terminalAt(col: number, row: number): TerminalState | null {
   let idx = 0
   for (let c = 0; c < col; c++) idx += props.columns[c]
   idx += row
-  return store.list[idx] ?? null
+  const id = props.slots[idx]
+  if (!id) return null
+  return termStore.byId(id) ?? null
 }
 
 function setRef(id: string, el: unknown) {
@@ -107,9 +111,6 @@ function setRef(id: string, el: unknown) {
 function fitAll() {
   Object.values(panelRefs).forEach((p) => p?.fit())
 }
-
-function onColResized() { fitAll() }
-function onRowResized() { fitAll() }
 
 const EmptySlot = defineComponent({
   emits: ['open'],
@@ -202,7 +203,6 @@ kbd {
 </style>
 
 <style>
-/* Empty slot — not scoped so it works inside dynamically rendered component */
 .empty-slot {
   display: flex;
   flex-direction: column;
@@ -216,6 +216,6 @@ kbd {
   background: var(--bg-base);
 }
 .empty-slot:hover { color: var(--accent-blue); background: var(--bg-surface); }
-.empty-slot-plus { font-size: 32px; font-weight: 200; line-height: 1; }
+.empty-slot-plus  { font-size: 32px; font-weight: 200; line-height: 1; }
 .empty-slot-label { font-size: 11px; letter-spacing: 0.5px; }
 </style>

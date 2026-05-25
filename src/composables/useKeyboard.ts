@@ -1,49 +1,114 @@
-import { onMounted, onUnmounted } from 'vue'
+/**
+ * Prefix-based keyboard system (tmux-style).
+ *
+ * All shortcuts require two steps:
+ *   1. Press the PREFIX chord  (default: Ctrl+B)
+ *   2. Press the action key    (single key, no modifiers)
+ *
+ * The prefix is always captured — even when xterm has focus — so
+ * there is no conflict with terminal programs.
+ * After the prefix, the next key is also captured before xterm sees it.
+ */
 
-export interface KeyboardAction {
-  key: string
-  ctrl?: boolean
-  shift?: boolean
-  alt?: boolean
-  handler: (e: KeyboardEvent) => void
+import { ref, onMounted, onUnmounted } from 'vue'
+
+// ── Public state ──────────────────────────────────────────────────────────────
+
+/** True while waiting for the second (action) key. */
+export const prefixActive = ref(false)
+
+/** Human-readable prefix chord shown in UI. */
+export const PREFIX_LABEL = 'Ctrl+B'
+
+// ── Internal ──────────────────────────────────────────────────────────────────
+
+interface Action {
+  key: string            // single key that fires after the prefix
+  handler: () => void
 }
 
-export function useKeyboard(actions: KeyboardAction[]) {
-  function onKeydown(e: KeyboardEvent) {
-    for (const action of actions) {
-      if (
-        e.key.toLowerCase() === action.key.toLowerCase() &&
-        !!e.ctrlKey === !!action.ctrl &&
-        !!e.shiftKey === !!action.shift &&
-        !!e.altKey === !!action.alt
-      ) {
-        // Don't fire if focus is inside an xterm canvas (terminal handles input itself)
-        const tag = (e.target as HTMLElement)?.tagName
-        const inTerminal = (e.target as HTMLElement)?.closest?.('.xterm-helper-textarea') !== null
-        if (inTerminal) continue
+const registry: Action[] = []
+let listenerCount = 0
+let cancelTimer: ReturnType<typeof setTimeout> | null = null
 
-        e.preventDefault()
-        action.handler(e)
-        break
-      }
+function isPrefix(e: KeyboardEvent): boolean {
+  return e.ctrlKey && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b'
+}
+
+function deactivate() {
+  prefixActive.value = false
+  if (cancelTimer) { clearTimeout(cancelTimer); cancelTimer = null }
+}
+
+function onKeydown(e: KeyboardEvent) {
+  // ── Step 1: prefix key ────────────────────────────────────
+  if (!prefixActive.value) {
+    if (isPrefix(e)) {
+      e.preventDefault()
+      e.stopPropagation()
+      prefixActive.value = true
+      cancelTimer = setTimeout(deactivate, 1500)
     }
+    return
   }
 
-  onMounted(() => window.addEventListener('keydown', onKeydown, true))
-  onUnmounted(() => window.removeEventListener('keydown', onKeydown, true))
+  // ── Step 2: action key (always intercept) ─────────────────
+  e.preventDefault()
+  e.stopPropagation()
+  const key = e.key
+  deactivate()
+
+  if (key === 'Escape') return  // just cancel prefix mode
+
+  for (const action of registry) {
+    if (key.toLowerCase() === action.key.toLowerCase()) {
+      action.handler()
+      return
+    }
+  }
 }
 
-export const SHORTCUTS = [
-  { keys: 'Ctrl+T', description: 'Novo terminal' },
-  { keys: 'Ctrl+Shift+T', description: 'Novo terminal (shell padrão)' },
-  { keys: 'Ctrl+W', description: 'Fechar terminal ativo' },
-  { keys: 'Ctrl+Tab', description: 'Próximo terminal' },
-  { keys: 'Ctrl+Shift+Tab', description: 'Terminal anterior' },
-  { keys: 'Ctrl+Alt+1', description: 'Layout: 1 coluna' },
-  { keys: 'Ctrl+Alt+2', description: 'Layout: 2 colunas' },
-  { keys: 'Ctrl+Alt+3', description: 'Layout: 1+2 linhas' },
-  { keys: 'Ctrl+Alt+4', description: 'Layout: 2+1 linhas' },
-  { keys: 'Ctrl+Alt+5', description: 'Layout: 2+3+1 linhas' },
-  { keys: 'Ctrl+Alt+6', description: 'Layout: 3+3 linhas' },
-  { keys: 'Ctrl+,', description: 'Configurações' },
+// ── Composable (call once per component that owns shortcuts) ──────────────────
+
+export function useKeyboard(actions: Action[]) {
+  onMounted(() => {
+    if (listenerCount === 0) {
+      // capture: true so we intercept before xterm
+      window.addEventListener('keydown', onKeydown, true)
+    }
+    listenerCount++
+    registry.push(...actions)
+  })
+
+  onUnmounted(() => {
+    actions.forEach((a) => {
+      const i = registry.indexOf(a)
+      if (i !== -1) registry.splice(i, 1)
+    })
+    listenerCount--
+    if (listenerCount === 0) {
+      window.removeEventListener('keydown', onKeydown, true)
+      deactivate()
+    }
+  })
+}
+
+// ── Shortcut reference table (used in SettingsModal) ─────────────────────────
+
+export const SHORTCUTS: { keys: string; description: string }[] = [
+  { keys: `${PREFIX_LABEL} → t`,   description: 'Novo terminal' },
+  { keys: `${PREFIX_LABEL} → w`,   description: 'Fechar terminal ativo' },
+  { keys: `${PREFIX_LABEL} → n`,   description: 'Próximo terminal' },
+  { keys: `${PREFIX_LABEL} → p`,   description: 'Terminal anterior' },
+  { keys: `${PREFIX_LABEL} → a`,   description: 'Nova aba de workspace' },
+  { keys: `${PREFIX_LABEL} → ]`,   description: 'Próxima aba' },
+  { keys: `${PREFIX_LABEL} → [`,   description: 'Aba anterior' },
+  { keys: `${PREFIX_LABEL} → 1`,   description: 'Layout: 1 coluna' },
+  { keys: `${PREFIX_LABEL} → 2`,   description: 'Layout: 2 colunas' },
+  { keys: `${PREFIX_LABEL} → 3`,   description: 'Layout: 1+2 linhas' },
+  { keys: `${PREFIX_LABEL} → 4`,   description: 'Layout: 2+1 linhas' },
+  { keys: `${PREFIX_LABEL} → 5`,   description: 'Layout: 2+3+1' },
+  { keys: `${PREFIX_LABEL} → 6`,   description: 'Layout: 3+3 linhas' },
+  { keys: `${PREFIX_LABEL} → ,`,   description: 'Configurações' },
+  { keys: `${PREFIX_LABEL} → Esc`, description: 'Cancelar prefix' },
 ]
