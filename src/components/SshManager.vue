@@ -2,7 +2,7 @@
   <div class="overlay" @click.self="emit('close')">
     <div class="panel">
       <div class="panel-header">
-        <h3>Perfis SSH</h3>
+        <h3>Perfis remotos</h3>
         <button class="btn-close" @click="emit('close')">✕</button>
       </div>
 
@@ -17,7 +17,7 @@
               class="profile-card"
               :style="profile.color ? { borderLeftColor: profile.color } : {}"
             >
-              <ProfileRow :profile="profile" @connect="connect" @edit="openForm" @remove="remove" />
+              <ProfileRow :profile="profile" @connect="connect" @transfer="openTransfer" @edit="openForm" @remove="remove" />
             </div>
           </template>
 
@@ -35,7 +35,7 @@
                 class="profile-card indented"
                 :style="profile.color ? { borderLeftColor: profile.color } : {}"
               >
-                <ProfileRow :profile="profile" @connect="connect" @edit="openForm" @remove="remove" />
+                <ProfileRow :profile="profile" @connect="connect" @transfer="openTransfer" @edit="openForm" @remove="remove" />
               </div>
             </template>
           </div>
@@ -49,7 +49,7 @@
             class="profile-card"
             :style="profile.color ? { borderLeftColor: profile.color } : {}"
           >
-            <ProfileRow :profile="profile" @connect="connect" @edit="openForm" @remove="remove" />
+            <ProfileRow :profile="profile" @connect="connect" @transfer="openTransfer" @edit="openForm" @remove="remove" />
           </div>
         </template>
 
@@ -59,6 +59,37 @@
       </div>
 
       <button class="btn-new" @click="openForm()">+ Novo perfil</button>
+
+      <!-- Modal de transferência (SFTP/FTP) -->
+      <div v-if="transferTarget" class="form-overlay" @click.self="transferTarget = null">
+        <div class="form">
+          <h4>{{ transferTarget.protocol === 'ftp' ? 'FTP' : 'SFTP' }} — {{ transferTarget.name }}</h4>
+          <div class="row">
+            <label>Host</label>
+            <input :value="`${transferTarget.username}@${transferTarget.host}:${transferTarget.port}`" disabled />
+          </div>
+          <template v-if="transferTarget.authType === 'password' || transferTarget.protocol === 'ftp'">
+            <div class="row">
+              <label>Senha</label>
+              <input v-model="transferPassword" type="password" placeholder="Digite a senha" autofocus @keydown.enter="doTransfer" />
+            </div>
+          </template>
+          <template v-else>
+            <div class="row">
+              <label>Chave privada</label>
+              <input :value="transferTarget.keyPath || '~/.ssh/id_rsa'" disabled />
+            </div>
+            <div class="row">
+              <label>Passphrase (se houver)</label>
+              <input v-model="transferPassword" type="password" placeholder="Deixe vazio se não tiver" @keydown.enter="doTransfer" />
+            </div>
+          </template>
+          <div class="form-actions">
+            <button @click="transferTarget = null">Cancelar</button>
+            <button class="btn-save" @click="doTransfer">Abrir painel 📁</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Modal de conexão -->
       <div v-if="connectTarget" class="form-overlay" @click.self="connectTarget = null">
@@ -94,7 +125,15 @@
       <!-- Formulário de criação/edição -->
       <div v-if="showForm" class="form-overlay" @click.self="showForm = false">
         <div class="form">
-          <h4>{{ editingId ? 'Editar' : 'Novo' }} perfil SSH</h4>
+          <h4>{{ editingId ? 'Editar' : 'Novo' }} perfil remoto</h4>
+
+          <div class="row">
+            <label>Protocolo</label>
+            <select v-model="form.protocol" @change="onProtocolChange">
+              <option value="ssh">SSH (terminal + SFTP)</option>
+              <option value="ftp">FTP (somente arquivos)</option>
+            </select>
+          </div>
 
           <div class="row">
             <label>Nome</label>
@@ -177,6 +216,7 @@ import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { useSshProfilesStore } from '@/stores/ssh-profiles'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useFileTransferStore } from '@/stores/file-transfer'
 import { storeToRefs } from 'pinia'
 import type { SshProfile } from '@/types'
 
@@ -185,6 +225,7 @@ const emit = defineEmits<{ close: [] }>()
 const sshStore  = useSshProfilesStore()
 const termStore = useTerminalsStore()
 const wsStore   = useWorkspacesStore()
+const transferStore = useFileTransferStore()
 const { profiles } = storeToRefs(sshStore)
 
 const COLORS = ['#58a6ff', '#3fb950', '#ff7b72', '#d29922', '#bc8cff', '#76e3ea', '#f97316', '#ff6b6b', '#39d353']
@@ -225,19 +266,24 @@ function toggleFolder(folder: string) {
 
 const ProfileRow = defineComponent({
   props: { profile: { type: Object as () => SshProfile, required: true } },
-  emits: ['connect', 'edit', 'remove'],
+  emits: ['connect', 'transfer', 'edit', 'remove'],
   setup(p, { emit }) {
+    const isFtp = (p.profile.protocol ?? 'ssh') === 'ftp'
     return () =>
       h('div', { class: 'profile-inner' }, [
         h('div', { class: 'profile-info' }, [
-          h('div', { class: 'profile-name' }, p.profile.name),
+          h('div', { class: 'profile-name' }, [
+            isFtp ? h('span', { class: 'proto-tag ftp' }, 'FTP ') : h('span', { class: 'proto-tag sftp' }, 'SSH '),
+            p.profile.name,
+          ]),
           h('div', { class: 'profile-host' }, `${p.profile.username}@${p.profile.host}:${p.profile.port}`),
           p.profile.tags.length
             ? h('div', { class: 'tags' }, p.profile.tags.map((tag) => h('span', { class: 'tag' }, tag)))
             : null,
         ]),
         h('div', { class: 'profile-actions' }, [
-          h('button', { title: 'Conectar', onClick: () => emit('connect', p.profile) }, '▶'),
+          !isFtp ? h('button', { title: 'Terminal SSH', onClick: () => emit('connect', p.profile) }, '▶') : null,
+          h('button', { title: isFtp ? 'Abrir FTP' : 'Abrir SFTP', onClick: () => emit('transfer', p.profile) }, '📁'),
           h('button', { title: 'Editar',   onClick: () => emit('edit',    p.profile) }, '✎'),
           h('button', { title: 'Excluir',  class: 'danger', onClick: () => emit('remove', p.profile.id) }, '✕'),
         ]),
@@ -255,10 +301,14 @@ const connectTarget  = ref<SshProfile | null>(null)
 const connectPassword = ref('')
 const needPassphrase  = ref(false)
 
+const transferTarget   = ref<SshProfile | null>(null)
+const transferPassword = ref('')
+
 const BLANK_FORM = () => ({
   name: '', folder: '', host: '', port: 22,
   username: '', authType: 'password' as 'password' | 'privatekey',
   password: '', keyPath: '', color: COLORS[0],
+  protocol: 'ssh' as 'ssh' | 'ftp',
 })
 
 const form = reactive(BLANK_FORM())
@@ -274,6 +324,7 @@ function openForm(profile?: SshProfile) {
       host: profile.host, port: profile.port,
       username: profile.username, authType: profile.authType,
       keyPath: profile.keyPath ?? '', color: profile.color ?? COLORS[0],
+      protocol: profile.protocol ?? 'ssh',
     })
     tagsInput.value = profile.tags.join(', ')
   } else {
@@ -294,6 +345,7 @@ async function save() {
     host: form.host, port: form.port, username: form.username,
     authType: form.authType, keyPath: form.keyPath || undefined,
     tags, color: form.color || undefined,
+    protocol: form.protocol,
   }
   if (editingId.value) {
     await sshStore.update(editingId.value, data)
@@ -308,9 +360,50 @@ async function remove(id: string) {
 }
 
 function connect(profile: SshProfile) {
+  if ((profile.protocol ?? 'ssh') === 'ftp') {
+    openTransfer(profile)
+    return
+  }
   connectPassword.value = ''
   needPassphrase.value  = profile.authType === 'privatekey'
   connectTarget.value   = profile
+}
+
+function openTransfer(profile: SshProfile) {
+  transferPassword.value = ''
+  transferTarget.value = profile
+}
+
+async function doTransfer() {
+  const profile = transferTarget.value
+  if (!profile) return
+  transferTarget.value = null
+  emit('close')
+  try {
+    if ((profile.protocol ?? 'ssh') === 'ftp') {
+      await transferStore.openFtpProfile({
+        host: profile.host, port: profile.port,
+        username: profile.username,
+        password: transferPassword.value,
+        name: profile.name,
+      })
+    } else {
+      await transferStore.openSftpProfile({
+        host: profile.host, port: profile.port,
+        username: profile.username,
+        password: transferPassword.value,
+        keyPath: profile.authType === 'privatekey' ? (profile.keyPath ?? '~/.ssh/id_rsa') : undefined,
+        name: profile.name,
+      })
+    }
+  } catch (err) {
+    alert(`Erro ao abrir transferência:\n${err}`)
+  }
+}
+
+function onProtocolChange() {
+  form.port = form.protocol === 'ftp' ? 21 : 22
+  if (form.protocol === 'ftp') form.authType = 'password'
 }
 
 async function doConnect() {
@@ -391,7 +484,10 @@ async function doConnect() {
   padding: 9px 12px;
 }
 .profile-info { flex: 1; min-width: 0; }
-.profile-name { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+.profile-name { font-size: 13px; color: var(--text-primary); font-weight: 500; display: flex; align-items: center; gap: 4px; }
+.proto-tag { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; }
+.proto-tag.sftp { background: #1f3d2a; color: #3fb950; }
+.proto-tag.ftp  { background: #3d2f1f; color: #d29922; }
 .profile-host { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
 .tag {

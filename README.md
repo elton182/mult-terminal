@@ -6,6 +6,7 @@ Gerenciador de múltiplos terminais para Windows, Linux e macOS. Construído com
 
 - **Terminais locais** — CMD, PowerShell, WSL, Bash, Zsh, Fish
 - **SSH integrado** — conexão por senha ou chave privada, perfis salvos
+- **Transferência de arquivos** — painel dual-pane (local + remoto) via **SFTP** e **FTP**
 - **Layout em grade flexível** — colunas com linhas variáveis (ex: 2+3+1 = 6 terminais simultâneos)
 - **Redimensionamento de painéis** — arraste os divisores entre terminais
 - **Atalhos de teclado** — navegação e controle sem mouse
@@ -41,17 +42,11 @@ npm run tauri build
 
 | Tecla | Ação |
 |-------|------|
-| `Ctrl+T` | Novo terminal (modal de seleção) |
-| `Ctrl+W` | Fechar terminal ativo |
-| `Ctrl+Tab` | Próximo terminal |
-| `Ctrl+Shift+Tab` | Terminal anterior |
-| `Ctrl+Alt+1` | Layout: 1 coluna |
-| `Ctrl+Alt+2` | Layout: 2 colunas (1+1) |
-| `Ctrl+Alt+3` | Layout: coluna com 2 + coluna com 1 |
-| `Ctrl+Alt+4` | Layout: coluna com 1 + coluna com 2 |
-| `Ctrl+Alt+5` | Layout: **2+3+1** (6 terminais) |
-| `Ctrl+Alt+6` | Layout: 3+3 (6 terminais) |
-| `Ctrl+,` | Configurações |
+| `Ctrl+B` → `t` | Novo terminal (modal de seleção) |
+| `Ctrl+B` → `w` | Fechar terminal ativo |
+| `Ctrl+B` → `n` / `p` | Próximo / anterior terminal |
+| `Ctrl+B` → `1` … `6` | Presets de layout |
+| `Ctrl+B` → `,` | Configurações |
 
 ## Layouts disponíveis
 
@@ -73,29 +68,62 @@ npm run tauri build
                      └──┴──┘
 ```
 
-## Perfis SSH
+## Perfis remotos (SSH / FTP)
 
 1. Clique em **🔒** na toolbar
 2. Clique em **+ Novo perfil**
-3. Preencha host, porta, usuário e tipo de autenticação
-4. Salve e clique em **▶** para conectar
+3. Escolha o protocolo:
+   - **SSH** — terminal + SFTP (porta 22)
+   - **FTP** — somente arquivos (porta 21)
+4. Preencha host, porta, usuário e autenticação
+5. Salve e use:
+   - **▶** — abre terminal SSH (perfis SSH)
+   - **📁** — abre painel de arquivos (SFTP ou FTP)
 
 Senhas não são persistidas em disco — são pedidas a cada conexão.
+
+Perfis salvos em:
+
+```
+%APPDATA%\com.multerm.dev\ssh-profiles.json   # Windows
+~/.config/com.multerm.dev/ssh-profiles.json   # Linux/macOS
+```
+
+## Transferência de arquivos
+
+Painel dual-pane com listas **Local** e **Remoto**.
+
+### Como abrir
+
+| Origem | Ação |
+|--------|------|
+| Terminal SSH conectado | **📁** no header do painel (reutiliza a sessão SSH para SFTP) |
+| Lista de perfis | **📁** no perfil (SFTP ou FTP direto) |
+
+### Operações
+
+- **↑ Enviar** / **↓ Baixar** — transferência do arquivo selecionado
+- **+ Pasta remota** — cria diretório no servidor
+- **✕ Remover remoto** — exclui arquivo ou pasta selecionada
+- Duplo-clique em pasta — entra no diretório
+- Barra de caminho editável — digite um caminho (ex: `/var/www/` ou `C:\Users\...`) e pressione **Enter** ou **→**
+- Barra de progresso — exibida durante upload/download com percentual
 
 ## Estrutura do projeto
 
 ```
 multerm/
-├── src/                    # Frontend Vue 3
-│   ├── components/         # Componentes UI
-│   ├── composables/        # Lógica reutilizável (xterm, teclado)
-│   ├── stores/             # Estado global (Pinia)
-│   └── types/              # TypeScript types
-└── src-tauri/              # Backend Rust
+├── src/                         # Frontend Vue 3
+│   ├── components/              # Componentes UI (incl. FileTransferPanel)
+│   ├── composables/             # Lógica reutilizável (xterm, teclado)
+│   ├── stores/                  # Estado global (Pinia)
+│   └── types/                   # TypeScript types
+└── src-tauri/                   # Backend Rust
     └── src/
-        ├── pty/            # Gerenciador de processos PTY
-        ├── ssh/            # Cliente SSH (russh)
-        └── config/         # Modelos de configuração
+        ├── pty/                 # Gerenciador de processos PTY
+        ├── ssh/                 # Cliente SSH (russh)
+        ├── transfer/            # SFTP + FTP (russh-sftp, suppaftp)
+        └── config/              # Modelos de configuração
 ```
 
 ## Stack técnica
@@ -103,7 +131,7 @@ multerm/
 | Camada | Tecnologia |
 |--------|-----------|
 | App shell | Tauri 2 |
-| Backend | Rust — `portable-pty`, `russh` |
+| Backend | Rust — `portable-pty`, `russh`, `russh-sftp`, `suppaftp` |
 | Frontend | Vue 3 + Vite + TypeScript |
 | Terminal UI | xterm.js |
 | Layout | splitpanes |

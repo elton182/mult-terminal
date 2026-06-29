@@ -1,16 +1,19 @@
 mod config;
 mod pty;
 mod ssh;
+mod transfer;
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
 use pty::PtyManager;
 use ssh::SshManager;
+use transfer::{ProgressReporter, TransferManager};
 
 type PtyState = Arc<Mutex<PtyManager>>;
 type SshState = Arc<Mutex<SshManager>>;
+type TransferState = Arc<Mutex<TransferManager>>;
 
 // ── PTY commands ─────────────────────────────────────────────────────────────
 
@@ -110,6 +113,147 @@ async fn ssh_disconnect(
     mgr.disconnect(&id).map_err(|e| e.to_string())
 }
 
+// ── File transfer commands ────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn transfer_sftp_connect(
+    id: String,
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    key_path: String,
+    passphrase: String,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let mgr = state.lock().await;
+    mgr.sftp_connect(id, host, port, username, password, key_path, passphrase)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_sftp_from_ssh(
+    id: String,
+    ssh_terminal_id: String,
+    transfer_state: tauri::State<'_, TransferState>,
+    ssh_state: tauri::State<'_, SshState>,
+) -> Result<(), String> {
+    let ssh_mgr = ssh_state.lock().await;
+    let transfer_mgr = transfer_state.lock().await;
+    transfer_mgr
+        .sftp_from_ssh(id, &ssh_terminal_id, &ssh_mgr)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_ftp_connect(
+    id: String,
+    host: String,
+    port: u16,
+    username: String,
+    password: String,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let mgr = state.lock().await;
+    mgr.ftp_connect(id, host, port, username, password)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_disconnect(
+    id: String,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let mgr = state.lock().await;
+    mgr.disconnect(&id).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_list_remote(
+    id: String,
+    path: String,
+    state: tauri::State<'_, TransferState>,
+) -> Result<Vec<transfer::FileEntry>, String> {
+    let mgr = state.lock().await;
+    mgr.list_remote(&id, &path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn transfer_list_local(path: String) -> Result<Vec<transfer::FileEntry>, String> {
+    transfer::list_local_dir(&path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn transfer_local_home() -> Result<String, String> {
+    transfer::local_home().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_upload(
+    id: String,
+    local_path: String,
+    remote_path: String,
+    app: AppHandle,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let file_name = std::path::Path::new(&local_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("arquivo")
+        .to_string();
+    let progress = ProgressReporter::new(app, id.clone(), "upload", file_name);
+    let mgr = state.lock().await;
+    mgr.upload(&id, &local_path, &remote_path, Some(progress))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_download(
+    id: String,
+    remote_path: String,
+    local_path: String,
+    app: AppHandle,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let file_name = std::path::Path::new(&remote_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("arquivo")
+        .to_string();
+    let progress = ProgressReporter::new(app, id.clone(), "download", file_name);
+    let mgr = state.lock().await;
+    mgr.download(&id, &remote_path, &local_path, Some(progress))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_mkdir_remote(
+    id: String,
+    path: String,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let mgr = state.lock().await;
+    mgr.mkdir_remote(&id, &path).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn transfer_delete_remote(
+    id: String,
+    path: String,
+    is_dir: bool,
+    state: tauri::State<'_, TransferState>,
+) -> Result<(), String> {
+    let mgr = state.lock().await;
+    mgr.delete_remote(&id, &path, is_dir)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // ── System integration commands ───────────────────────────────────────────────
 
 #[tauri::command]
@@ -197,9 +341,11 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let pty_mgr = Arc::new(Mutex::new(PtyManager::new(handle.clone())));
-            let ssh_mgr = Arc::new(Mutex::new(SshManager::new(handle)));
+            let ssh_mgr = Arc::new(Mutex::new(SshManager::new(handle.clone())));
+            let transfer_mgr = Arc::new(Mutex::new(TransferManager::new()));
             app.manage(pty_mgr);
             app.manage(ssh_mgr);
+            app.manage(transfer_mgr);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -212,6 +358,17 @@ pub fn run() {
             ssh_write,
             ssh_resize,
             ssh_disconnect,
+            transfer_sftp_connect,
+            transfer_sftp_from_ssh,
+            transfer_ftp_connect,
+            transfer_disconnect,
+            transfer_list_remote,
+            transfer_list_local,
+            transfer_local_home,
+            transfer_upload,
+            transfer_download,
+            transfer_mkdir_remote,
+            transfer_delete_remote,
             create_desktop_shortcut,
             get_auto_startup,
             set_auto_startup,

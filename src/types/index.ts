@@ -26,7 +26,32 @@ export interface SshProfile {
   keyPath?: string
   tags: string[]
   color?: string
-  folder?: string        // category/folder for grouping profiles
+  folder?: string
+  protocol?: 'ssh' | 'ftp'   // default: ssh
+}
+
+export interface FileEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  size: number
+}
+
+export interface TransferProgress {
+  bytes_done: number
+  bytes_total: number
+  direction: 'upload' | 'download'
+  file_name: string
+}
+
+export interface TransferPanelState {
+  visible: boolean
+  sessionId: string | null
+  protocol: 'sftp' | 'ftp'
+  title: string
+  loading: boolean
+  error: string | null
+  progress: TransferProgress | null
 }
 
 export interface WorkspaceTab {

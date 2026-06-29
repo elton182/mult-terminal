@@ -36,6 +36,8 @@
       v-if="showSettings"
       @close="showSettings = false"
     />
+
+    <FileTransferPanel />
   </div>
 </template>
 
@@ -52,6 +54,7 @@ import TerminalGrid from '@/components/TerminalGrid.vue'
 import NewTerminalModal from '@/components/NewTerminalModal.vue'
 import SshManager from '@/components/SshManager.vue'
 import SettingsModal from '@/components/SettingsModal.vue'
+import FileTransferPanel from '@/components/FileTransferPanel.vue'
 import { useKeyboard } from '@/composables/useKeyboard'
 
 const termStore = useTerminalsStore()

@@ -1,6 +1,7 @@
 mod session;
-use session::{AuthMethod, SshControl, SshSession};
+pub use session::{connect_handle, AuthMethod, SshHandler, SshSession};
 
+use session::SshControl;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tauri::AppHandle;
@@ -30,18 +31,40 @@ impl SshManager {
         cols: u16,
     ) -> anyhow::Result<String> {
         let auth = if !key_path.is_empty() {
-            AuthMethod::PrivateKey { path: key_path, passphrase: None }
+            AuthMethod::PrivateKey {
+                path: key_path,
+                passphrase: None,
+            }
         } else {
             AuthMethod::Password(password)
         };
 
         let session = SshSession::connect(
-            id.clone(), host, port, username, auth, rows, cols, self.app.clone(),
+            id.clone(),
+            host,
+            port,
+            username,
+            auth,
+            rows,
+            cols,
+            self.app.clone(),
         )
         .await?;
 
         self.sessions.lock().unwrap().insert(id.clone(), session);
         Ok(id)
+    }
+
+    pub async fn get_ssh_handle(
+        &self,
+        id: &str,
+    ) -> Option<Arc<tokio::sync::Mutex<russh::client::Handle<SshHandler>>>> {
+        let handle_slot = {
+            let sessions = self.sessions.lock().ok()?;
+            sessions.get(id)?.handle.clone()
+        };
+        let guard = handle_slot.lock().await;
+        guard.clone()
     }
 
     pub fn write(&self, id: &str, data: Vec<u8>) -> anyhow::Result<()> {

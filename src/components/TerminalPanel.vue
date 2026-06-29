@@ -29,6 +29,12 @@
 
       <!-- Ações direita -->
       <div class="right-btns">
+        <button
+          v-if="type === 'ssh' && terminal?.isConnected"
+          class="btn-icon"
+          title="Painel SFTP (usa conexão SSH aberta)"
+          @click="openTransfer"
+        >📁</button>
         <!-- Mover para outra aba -->
         <div v-if="otherTabs.length" class="tab-move-wrap">
           <button class="btn-icon" title="Mover para aba" @click="showTabMenu = !showTabMenu">⊞</button>
@@ -87,6 +93,7 @@ import { ref, computed, nextTick } from 'vue'
 import { useTerminal } from '@/composables/useTerminal'
 import { useTerminalsStore } from '@/stores/terminals'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useFileTransferStore } from '@/stores/file-transfer'
 
 const COLORS = ['#58a6ff','#3fb950','#ff7b72','#d29922','#bc8cff','#76e3ea','#f97316','#ff6b6b','#39d353']
 
@@ -105,6 +112,7 @@ const props = defineProps<{
 const containerRef  = ref<HTMLElement>()
 const termStore     = useTerminalsStore()
 const wsStore       = useWorkspacesStore()
+const transferStore = useFileTransferStore()
 
 // Reactive terminal state (label/color may change)
 const terminal = computed(() => termStore.byId(props.terminalId))
@@ -161,6 +169,12 @@ function saveEdit() {
   termStore.setLabel(props.terminalId, editLabel.value)
   termStore.setColor(props.terminalId, editColor.value)
   showEdit.value = false
+}
+
+function openTransfer() {
+  if (props.type !== 'ssh' || !terminal.value?.isConnected) return
+  const title = terminal.value.label || terminal.value.title || 'SFTP'
+  transferStore.openFromSshTerminal(props.terminalId, title)
 }
 
 // ── Navigation (move within workspace grid) ───────────────
