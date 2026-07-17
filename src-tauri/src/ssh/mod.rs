@@ -33,7 +33,11 @@ impl SshManager {
         let auth = if !key_path.is_empty() {
             AuthMethod::PrivateKey {
                 path: key_path,
-                passphrase: None,
+                passphrase: if password.is_empty() {
+                    None
+                } else {
+                    Some(password)
+                },
             }
         } else {
             AuthMethod::Password(password)

@@ -1,12 +1,13 @@
 use super::progress::ProgressReporter;
 use super::types::FileEntry;
 use anyhow::Context;
-use std::io::{Read, Write};
+use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use suppaftp::FtpStream;
 
-const CHUNK_SIZE: usize = 64 * 1024;
+const CHUNK_SIZE: usize = 256 * 1024;
+const WRITE_BUF_SIZE: usize = 1024 * 1024;
 
 pub struct FtpConnection {
     inner: Arc<Mutex<FtpStream>>,
@@ -29,30 +30,6 @@ impl<R: Read> Read for ProgressReader<R> {
             }
         }
         Ok(n)
-    }
-}
-
-struct ProgressWriter<W> {
-    inner: W,
-    done: u64,
-    total: u64,
-    progress: Option<ProgressReporter>,
-}
-
-impl<W: Write> Write for ProgressWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let n = self.inner.write(buf)?;
-        if n > 0 {
-            self.done += n as u64;
-            if let Some(p) = &self.progress {
-                p.report(self.done.min(self.total.max(1)), self.total.max(1));
-            }
-        }
-        Ok(n)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.inner.flush()
     }
 }
 
@@ -144,7 +121,7 @@ impl FtpConnection {
         let file = std::fs::File::open(local_path)
             .with_context(|| format!("Não foi possível ler {}", local_path))?;
         let mut reader = ProgressReader {
-            inner: file,
+            inner: std::io::BufReader::with_capacity(CHUNK_SIZE, file),
             done: 0,
             total,
             progress: progress.cloned(),
@@ -188,12 +165,8 @@ impl FtpConnection {
         }
         let file = std::fs::File::create(local_path)
             .with_context(|| format!("Não foi possível criar {}", local_path))?;
-        let mut writer = ProgressWriter {
-            inner: file,
-            done: 0,
-            total,
-            progress: progress.cloned(),
-        };
+        let mut writer = BufWriter::with_capacity(WRITE_BUF_SIZE, file);
+        let mut done = 0u64;
 
         ftp.retr(file_name, |remote| {
             let mut buf = vec![0u8; CHUNK_SIZE];
@@ -207,13 +180,21 @@ impl FtpConnection {
                 writer
                     .write_all(&buf[..n])
                     .map_err(suppaftp::FtpError::ConnectionError)?;
+                done += n as u64;
+                if let Some(p) = progress {
+                    let denom = if total > 0 { total } else { done.max(1) };
+                    p.report(done.min(denom), denom);
+                }
             }
+            writer
+                .flush()
+                .map_err(suppaftp::FtpError::ConnectionError)?;
             Ok(())
         })
         .map_err(|e| anyhow::anyhow!("Falha no download FTP: {e}"))?;
 
         if let Some(p) = progress {
-            let final_total = if total > 0 { total } else { writer.done.max(1) };
+            let final_total = if total > 0 { total } else { done.max(1) };
             p.report(final_total, final_total);
         }
         Ok(())
@@ -259,6 +240,6 @@ fn join_remote(base: &str, name: &str) -> String {
     if base == "/" {
         format!("/{}", name)
     } else {
-        format!("{}/{}", base, name)
+        format!("{}/{}", base.trim_end_matches('/'), name)
     }
 }

@@ -2,18 +2,21 @@ mod config;
 mod pty;
 mod ssh;
 mod transfer;
+mod workspace;
 
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
 
 use pty::PtyManager;
 use ssh::SshManager;
 use transfer::{ProgressReporter, TransferManager};
+use workspace::{DetachedPayload, DetachedRegistry, DetachedTabMeta};
 
 type PtyState = Arc<Mutex<PtyManager>>;
 type SshState = Arc<Mutex<SshManager>>;
 type TransferState = Arc<Mutex<TransferManager>>;
+type DetachedState = Arc<DetachedRegistry>;
 
 // ── PTY commands ─────────────────────────────────────────────────────────────
 
@@ -330,6 +333,74 @@ fn set_auto_startup(enable: bool) -> Result<(), String> {
     Ok(())
 }
 
+// ── Detached workspace commands ───────────────────────────────────────────────
+
+#[tauri::command]
+fn detached_put(
+    payload: DetachedPayload,
+    state: tauri::State<'_, DetachedState>,
+) -> Result<(), String> {
+    state.put(payload);
+    Ok(())
+}
+
+#[tauri::command]
+fn detached_get(
+    tab_id: String,
+    state: tauri::State<'_, DetachedState>,
+) -> Result<Option<DetachedPayload>, String> {
+    Ok(state.get(&tab_id))
+}
+
+#[tauri::command]
+fn detached_take(
+    tab_id: String,
+    state: tauri::State<'_, DetachedState>,
+) -> Result<Option<DetachedPayload>, String> {
+    Ok(state.take(&tab_id))
+}
+
+#[tauri::command]
+fn detached_list(state: tauri::State<'_, DetachedState>) -> Result<Vec<DetachedTabMeta>, String> {
+    Ok(state.list())
+}
+
+#[tauri::command]
+fn detached_remove(
+    tab_id: String,
+    state: tauri::State<'_, DetachedState>,
+) -> Result<(), String> {
+    state.remove(&tab_id);
+    Ok(())
+}
+
+/// Kill PTY/SSH sessions for a closed detached tab and notify main window.
+#[tauri::command]
+async fn kill_tab_terminals(
+    tab_id: String,
+    terminal_ids: Vec<String>,
+    app: AppHandle,
+    pty: tauri::State<'_, PtyState>,
+    ssh: tauri::State<'_, SshState>,
+    detached: tauri::State<'_, DetachedState>,
+) -> Result<(), String> {
+    {
+        let mgr = pty.lock().await;
+        for id in &terminal_ids {
+            let _ = mgr.kill(id);
+        }
+    }
+    {
+        let mgr = ssh.lock().await;
+        for id in &terminal_ids {
+            let _ = mgr.disconnect(id);
+        }
+    }
+    detached.remove(&tab_id);
+    let _ = app.emit("workspace-detached-closed", tab_id);
+    Ok(())
+}
+
 // ── App entry ─────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -343,9 +414,11 @@ pub fn run() {
             let pty_mgr = Arc::new(Mutex::new(PtyManager::new(handle.clone())));
             let ssh_mgr = Arc::new(Mutex::new(SshManager::new(handle.clone())));
             let transfer_mgr = Arc::new(Mutex::new(TransferManager::new()));
+            let detached_reg = Arc::new(DetachedRegistry::new());
             app.manage(pty_mgr);
             app.manage(ssh_mgr);
             app.manage(transfer_mgr);
+            app.manage(detached_reg);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -372,6 +445,12 @@ pub fn run() {
             create_desktop_shortcut,
             get_auto_startup,
             set_auto_startup,
+            detached_put,
+            detached_get,
+            detached_take,
+            detached_list,
+            detached_remove,
+            kill_tab_terminals,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application")

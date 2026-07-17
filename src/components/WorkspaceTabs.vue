@@ -25,12 +25,34 @@
           {{ tab.slots.filter(Boolean).length }}
         </span>
         <button
+          class="ws-detach"
+          title="Destacar aba em nova janela"
+          @click.stop="emit('detach', tab.id)"
+        >⧉</button>
+        <button
           v-if="wsStore.list.length > 1"
           class="ws-close"
           title="Fechar aba"
           @click.stop="wsStore.removeTab(tab.id)"
         >✕</button>
       </template>
+    </div>
+
+    <!-- Abas destacadas (fantasma) -->
+    <div
+      v-for="d in wsStore.detachedTabs"
+      :key="'d-' + d.tabId"
+      class="ws-tab detached"
+      :title="'Destacada — clique para focar; use ⧉ para reanexar'"
+      @click="emit('focus-detached', d.tabId)"
+    >
+      <span class="ws-label">{{ d.label }}</span>
+      <span class="ws-count">{{ d.terminalCount }}</span>
+      <button
+        class="ws-detach"
+        title="Reanexar à janela principal"
+        @click.stop="emit('reattach', d.tabId)"
+      >⧉</button>
     </div>
 
     <button class="ws-add" title="Nova aba" @click="wsStore.addTab()">+</button>
@@ -40,6 +62,12 @@
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
+
+const emit = defineEmits<{
+  detach: [tabId: string]
+  reattach: [tabId: string]
+  'focus-detached': [tabId: string]
+}>()
 
 const wsStore = useWorkspacesStore()
 
@@ -100,6 +128,15 @@ function commitRename() {
   background: var(--bg-surface);
   border-color: var(--border-subtle);
 }
+.ws-tab.detached {
+  border-style: dashed;
+  border-color: var(--border-default);
+  opacity: 0.85;
+}
+.ws-tab.detached .ws-label::before {
+  content: '⧉ ';
+  opacity: 0.7;
+}
 
 .ws-label { font-weight: 500; }
 
@@ -113,20 +150,25 @@ function commitRename() {
 }
 .ws-tab.active .ws-count { background: var(--accent-blue); color: var(--bg-deep); opacity: 0.9; }
 
+.ws-detach,
 .ws-close {
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   padding: 0 2px;
-  font-size: 9px;
+  font-size: 10px;
   border-radius: 2px;
   opacity: 0;
   line-height: 1;
   transition: opacity 0.1s, color 0.1s;
 }
+.ws-tab:hover .ws-detach,
+.ws-tab.active .ws-detach,
 .ws-tab:hover .ws-close,
-.ws-tab.active .ws-close { opacity: 0.6; }
+.ws-tab.active .ws-close,
+.ws-tab.detached .ws-detach { opacity: 0.6; }
+.ws-detach:hover { color: var(--accent-blue) !important; opacity: 1 !important; }
 .ws-close:hover { color: var(--accent-red) !important; opacity: 1 !important; }
 
 .ws-add {

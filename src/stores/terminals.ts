@@ -6,6 +6,8 @@ export const useTerminalsStore = defineStore('terminals', {
   state: () => ({
     /** Flat list of all open terminal processes. Grid placement is in workspacesStore. */
     terminals: [] as TerminalState[],
+    /** Pending SerializeAddon dumps to restore on next xterm mount. */
+    pendingScrollbacks: {} as Record<string, string>,
   }),
 
   getters: {
@@ -65,6 +67,33 @@ export const useTerminalsStore = defineStore('terminals', {
       return id
     },
 
+    /** Hydrate terminal metadata without spawning (detach/reattach). */
+    hydrate(terminals: TerminalState[]) {
+      const byId = new Map(this.terminals.map((t) => [t.id, t]))
+      for (const t of terminals) byId.set(t.id, t)
+      this.terminals = [...byId.values()]
+    },
+
+    /** Remove metadata only — does not kill PTY/SSH. */
+    detachMeta(ids: string[]) {
+      const set = new Set(ids)
+      this.terminals = this.terminals.filter((t) => !set.has(t.id))
+    },
+
+    setPendingScrollbacks(map: Record<string, string>) {
+      this.pendingScrollbacks = { ...this.pendingScrollbacks, ...map }
+    },
+
+    takePendingScrollback(id: string): string | undefined {
+      const s = this.pendingScrollbacks[id]
+      if (s !== undefined) {
+        const next = { ...this.pendingScrollbacks }
+        delete next[id]
+        this.pendingScrollbacks = next
+      }
+      return s
+    },
+
     /** Destroys the PTY/SSH process. Workspace slot cleanup is handled by workspacesStore. */
     async close(id: string) {
       const terminal = this.terminals.find((t) => t.id === id)
@@ -75,6 +104,9 @@ export const useTerminalsStore = defineStore('terminals', {
         await invoke('ssh_disconnect', { id }).catch(() => {})
       }
       this.terminals = this.terminals.filter((t) => t.id !== id)
+      const next = { ...this.pendingScrollbacks }
+      delete next[id]
+      this.pendingScrollbacks = next
     },
 
     rename(id: string, title: string) {

@@ -3,14 +3,25 @@ use super::types::FileEntry;
 use crate::ssh::{connect_handle, AuthMethod, SshHandler};
 use anyhow::Context;
 use russh::client;
-use russh_sftp::client::SftpSession;
+use russh_sftp::client::{Config as SftpConfig, SftpSession};
 use russh_sftp::protocol::OpenFlags;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufWriter};
 use tokio::sync::Mutex;
 
-const CHUNK_SIZE: usize = 64 * 1024;
+/// Alinhado ao max_packet_len padrão do OpenSSH (256 KiB).
+const CHUNK_SIZE: usize = 256 * 1024;
+/// Arquivos até este tamanho usam read/write em bloco único (bem mais rápido no SFTP).
+const FAST_PATH_MAX: u64 = 48 * 1024 * 1024;
+
+fn sftp_config() -> SftpConfig {
+    SftpConfig {
+        max_packet_len: CHUNK_SIZE as u32,
+        max_concurrent_writes: 64,
+        request_timeout_secs: 120,
+    }
+}
 
 pub struct SftpConnection {
     session: Arc<Mutex<SftpSession>>,
@@ -72,22 +83,16 @@ impl SftpConnection {
         remote_path: &str,
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
-        let file_name = Path::new(local_path)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("arquivo")
-            .to_string();
+        let remote = normalize_remote(remote_path);
+        let total = tokio::fs::metadata(local_path).await?.len();
 
-        let mut local_file = tokio::fs::File::open(local_path)
-            .await
-            .with_context(|| format!("Não foi possível ler {}", local_path))?;
-        let total = local_file.metadata().await?.len();
         if let Some(p) = progress {
-            p.report(0, total);
+            p.report(0, total.max(1));
         }
 
-        let remote = normalize_remote(remote_path);
         let session = self.session.lock().await;
+
+        // Não usar session.write(): abre só com WRITE (sem CREATE) e falha se o arquivo remoto não existe.
         let mut remote_file = session
             .open_with_flags(
                 &remote,
@@ -95,6 +100,25 @@ impl SftpConnection {
             )
             .await
             .context("Falha ao abrir arquivo remoto para upload")?;
+
+        if total <= FAST_PATH_MAX {
+            let data = tokio::fs::read(local_path)
+                .await
+                .with_context(|| format!("Não foi possível ler {}", local_path))?;
+            remote_file
+                .write_all(&data)
+                .await
+                .context("Falha no upload SFTP")?;
+            remote_file.shutdown().await.ok();
+            if let Some(p) = progress {
+                p.report(total, total.max(1));
+            }
+            return Ok(());
+        }
+
+        let mut local_file = tokio::fs::File::open(local_path)
+            .await
+            .with_context(|| format!("Não foi possível ler {}", local_path))?;
 
         let mut buf = vec![0u8; CHUNK_SIZE];
         let mut done = 0u64;
@@ -106,14 +130,13 @@ impl SftpConnection {
             remote_file.write_all(&buf[..n]).await?;
             done += n as u64;
             if let Some(p) = progress {
-                p.report(done.min(total), total);
+                p.report(done, total);
             }
         }
         remote_file.shutdown().await.ok();
         if let Some(p) = progress {
             p.report(total, total);
         }
-        let _ = file_name;
         Ok(())
     }
 
@@ -124,11 +147,10 @@ impl SftpConnection {
         progress: Option<&ProgressReporter>,
     ) -> anyhow::Result<()> {
         let remote = normalize_remote(remote_path);
-        let file_name = Path::new(&remote)
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("arquivo")
-            .to_string();
+
+        if let Some(parent) = Path::new(local_path).parent() {
+            tokio::fs::create_dir_all(parent).await.ok();
+        }
 
         let session = self.session.lock().await;
         let total = session
@@ -142,17 +164,31 @@ impl SftpConnection {
             p.report(0, total.max(1));
         }
 
-        if let Some(parent) = Path::new(local_path).parent() {
-            tokio::fs::create_dir_all(parent).await.ok();
+        if total > 0 && total <= FAST_PATH_MAX {
+            let data = session
+                .read(&remote)
+                .await
+                .context("Falha no download SFTP")?;
+            drop(session);
+            tokio::fs::write(local_path, &data)
+                .await
+                .with_context(|| format!("Não foi possível gravar {}", local_path))?;
+            if let Some(p) = progress {
+                p.report(total, total);
+            }
+            return Ok(());
         }
-        let mut local_file = tokio::fs::File::create(local_path)
-            .await
-            .with_context(|| format!("Não foi possível gravar {}", local_path))?;
 
         let mut remote_file = session
             .open(&remote)
             .await
             .context("Falha ao abrir arquivo remoto para download")?;
+        drop(session);
+
+        let local_file = tokio::fs::File::create(local_path)
+            .await
+            .with_context(|| format!("Não foi possível gravar {}", local_path))?;
+        let mut writer = BufWriter::with_capacity(1024 * 1024, local_file);
 
         let mut buf = vec![0u8; CHUNK_SIZE];
         let mut done = 0u64;
@@ -161,18 +197,18 @@ impl SftpConnection {
             if n == 0 {
                 break;
             }
-            local_file.write_all(&buf[..n]).await?;
+            writer.write_all(&buf[..n]).await?;
             done += n as u64;
             let denom = if total > 0 { total } else { done.max(1) };
             if let Some(p) = progress {
                 p.report(done.min(denom), denom);
             }
         }
+        writer.flush().await?;
         if let Some(p) = progress {
             let final_total = if total > 0 { total } else { done.max(1) };
             p.report(final_total, final_total);
         }
-        let _ = file_name;
         Ok(())
     }
 
@@ -210,7 +246,7 @@ async fn open_sftp_on_handle(
         .await
         .context("Servidor não suporta subsistema SFTP")?;
     let stream = channel.into_stream();
-    let sftp = SftpSession::new(stream)
+    let sftp = SftpSession::new_with_config(stream, sftp_config())
         .await
         .context("Falha ao iniciar sessão SFTP")?;
     Ok(Arc::new(Mutex::new(sftp)))
@@ -237,7 +273,7 @@ fn join_remote(base: &str, name: &str) -> String {
     if base == "/" {
         format!("/{}", name)
     } else {
-        format!("{}/{}", base, name)
+        format!("{}/{}", base.trim_end_matches('/'), name)
     }
 }
 

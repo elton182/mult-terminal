@@ -111,4 +111,9 @@ export const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: `${PREFIX_LABEL} → 6`,   description: 'Layout: 3+3 linhas' },
   { keys: `${PREFIX_LABEL} → ,`,   description: 'Configurações' },
   { keys: `${PREFIX_LABEL} → Esc`, description: 'Cancelar prefix' },
+  { keys: 'Ctrl+C',                description: 'Copiar seleção (ou SIGINT se não houver)' },
+  { keys: 'Ctrl+V',                description: 'Colar da área de transferência' },
+  { keys: 'Ctrl+Shift+C',          description: 'Copiar seleção' },
+  { keys: 'Ctrl+Shift+V',          description: 'Colar da área de transferência' },
+  { keys: 'Botão direito',         description: 'Menu Copiar / Colar no terminal' },
 ]

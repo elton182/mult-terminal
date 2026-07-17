@@ -72,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h } from 'vue'
+import { computed, defineComponent, h, nextTick, watch } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import { useTerminalsStore } from '@/stores/terminals'
@@ -83,6 +83,8 @@ const props = defineProps<{
   columns:  number[]           // e.g. [2, 3, 1]
   slots:    (string | null)[]  // terminal IDs from workspace store
   activeId?: string
+  /** false enquanto a aba está oculta (v-show) — ao voltar, re-fit */
+  visible?: boolean
 }>()
 
 const emit = defineEmits<{ 'new-terminal': [] }>()
@@ -108,9 +110,27 @@ function setRef(id: string, el: unknown) {
   panelRefs[id] = el as InstanceType<typeof TerminalPanel> | null
 }
 
-function fitAll() {
-  Object.values(panelRefs).forEach((p) => p?.fit())
+function fitAll(force = false) {
+  Object.values(panelRefs).forEach((p) => p?.fit(force))
 }
+
+function serializeAll(): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [id, panel] of Object.entries(panelRefs)) {
+    if (!panel) continue
+    const s = panel.serialize?.()
+    if (s) out[id] = s
+  }
+  return out
+}
+
+// Ao reexibir a aba (v-show), o container volta a ter tamanho — força re-fit
+watch(
+  () => props.visible,
+  (v) => {
+    if (v) nextTick(() => fitAll(true))
+  },
+)
 
 const EmptySlot = defineComponent({
   emits: ['open'],
@@ -126,7 +146,7 @@ const EmptySlot = defineComponent({
   },
 })
 
-defineExpose({ fitAll })
+defineExpose({ fitAll, serializeAll })
 </script>
 
 <style scoped>

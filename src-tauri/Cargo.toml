@@ -29,7 +29,7 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 which = "6"
 shellexpand = "3"
-russh-sftp = "2.1.1"
+russh-sftp = "2.3"
 suppaftp = { version = "6", default-features = false }
 
 [profile.release]

@@ -121,11 +121,12 @@ const topBorder = computed(() =>
   props.color ? { borderTop: `2px solid ${props.color}` } : {},
 )
 
-const { fit } = useTerminal(
+const { fit, serialize } = useTerminal(
   props.terminalId,
   containerRef,
   props.type,
   () => termStore.markDisconnected(props.terminalId),
+  termStore.takePendingScrollback(props.terminalId),
 )
 
 // ── Close ─────────────────────────────────────────────────
@@ -220,7 +221,7 @@ function move(dir: 'up' | 'down' | 'left' | 'right') {
   }
 }
 
-defineExpose({ fit })
+defineExpose({ fit, serialize })
 </script>
 
 <style scoped>

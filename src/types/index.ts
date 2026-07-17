@@ -24,6 +24,8 @@ export interface SshProfile {
   username: string
   authType: 'password' | 'privatekey'
   keyPath?: string
+  /** When authType is privatekey: key is encrypted and needs a passphrase prompt. */
+  hasPassphrase?: boolean
   tags: string[]
   color?: string
   folder?: string
@@ -60,6 +62,20 @@ export interface WorkspaceTab {
   columns: number[]
   slots: (string | null)[]   // terminal IDs; null = empty slot
   activeTerminalId?: string
+}
+
+export interface DetachedTabMeta {
+  tabId: string
+  label: string
+  windowLabel: string
+  terminalCount: number
+}
+
+export interface DetachedPayload {
+  tab: WorkspaceTab
+  terminals: TerminalState[]
+  scrollbacks: Record<string, string>
+  windowLabel: string
 }
 
 export type LayoutMode = 'vertical' | 'horizontal' | 'grid'

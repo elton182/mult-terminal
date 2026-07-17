@@ -80,8 +80,8 @@
               <input :value="transferTarget.keyPath || '~/.ssh/id_rsa'" disabled />
             </div>
             <div class="row">
-              <label>Passphrase (se houver)</label>
-              <input v-model="transferPassword" type="password" placeholder="Deixe vazio se não tiver" @keydown.enter="doTransfer" />
+              <label>Passphrase</label>
+              <input v-model="transferPassword" type="password" placeholder="Digite a passphrase" autofocus @keydown.enter="doTransfer" />
             </div>
           </template>
           <div class="form-actions">
@@ -110,9 +110,9 @@
               <label>Chave privada</label>
               <input :value="connectTarget.keyPath || '~/.ssh/id_rsa'" disabled />
             </div>
-            <div v-if="needPassphrase" class="row">
-              <label>Passphrase (se houver)</label>
-              <input v-model="connectPassword" type="password" placeholder="Deixe vazio se não tiver" @keydown.enter="doConnect" />
+            <div class="row">
+              <label>Passphrase</label>
+              <input v-model="connectPassword" type="password" placeholder="Digite a passphrase" autofocus @keydown.enter="doConnect" />
             </div>
           </template>
           <div class="form-actions">
@@ -171,13 +171,22 @@
             <label>Senha <small>(salva apenas nesta sessão)</small></label>
             <input v-model="form.password" type="password" autocomplete="off" />
           </div>
-          <div v-else class="row">
-            <label>Caminho da chave</label>
-            <div class="file-row">
-              <input v-model="form.keyPath" placeholder="~/.ssh/id_rsa" />
-              <button @click="pickKey">...</button>
+          <template v-else>
+            <div class="row">
+              <label>Caminho da chave</label>
+              <div class="file-row">
+                <input v-model="form.keyPath" placeholder="~/.ssh/id_rsa" />
+                <button @click="pickKey">...</button>
+              </div>
             </div>
-          </div>
+            <div class="row check-row">
+              <label class="check-label">
+                <input v-model="form.hasPassphrase" type="checkbox" />
+                Esta chave possui passphrase
+              </label>
+              <small class="hint">Se desmarcado, conecta direto sem pedir senha</small>
+            </div>
+          </template>
           <div class="row">
             <label>Tags</label>
             <input v-model="tagsInput" placeholder="produção, web" />
@@ -273,13 +282,9 @@ const ProfileRow = defineComponent({
       h('div', { class: 'profile-inner' }, [
         h('div', { class: 'profile-info' }, [
           h('div', { class: 'profile-name' }, [
-            isFtp ? h('span', { class: 'proto-tag ftp' }, 'FTP ') : h('span', { class: 'proto-tag sftp' }, 'SSH '),
+            isFtp ? h('span', { class: 'proto-tag ftp' }, 'FTP') : h('span', { class: 'proto-tag sftp' }, 'SSH'),
             p.profile.name,
           ]),
-          h('div', { class: 'profile-host' }, `${p.profile.username}@${p.profile.host}:${p.profile.port}`),
-          p.profile.tags.length
-            ? h('div', { class: 'tags' }, p.profile.tags.map((tag) => h('span', { class: 'tag' }, tag)))
-            : null,
         ]),
         h('div', { class: 'profile-actions' }, [
           !isFtp ? h('button', { title: 'Terminal SSH', onClick: () => emit('connect', p.profile) }, '▶') : null,
@@ -299,7 +304,6 @@ const tagsInput = ref('')
 
 const connectTarget  = ref<SshProfile | null>(null)
 const connectPassword = ref('')
-const needPassphrase  = ref(false)
 
 const transferTarget   = ref<SshProfile | null>(null)
 const transferPassword = ref('')
@@ -307,7 +311,7 @@ const transferPassword = ref('')
 const BLANK_FORM = () => ({
   name: '', folder: '', host: '', port: 22,
   username: '', authType: 'password' as 'password' | 'privatekey',
-  password: '', keyPath: '', color: COLORS[0],
+  password: '', keyPath: '', hasPassphrase: false, color: COLORS[0],
   protocol: 'ssh' as 'ssh' | 'ftp',
 })
 
@@ -323,7 +327,8 @@ function openForm(profile?: SshProfile) {
       name: profile.name, folder: profile.folder ?? '',
       host: profile.host, port: profile.port,
       username: profile.username, authType: profile.authType,
-      keyPath: profile.keyPath ?? '', color: profile.color ?? COLORS[0],
+      keyPath: profile.keyPath ?? '', hasPassphrase: !!profile.hasPassphrase,
+      color: profile.color ?? COLORS[0],
       protocol: profile.protocol ?? 'ssh',
     })
     tagsInput.value = profile.tags.join(', ')
@@ -344,6 +349,7 @@ async function save() {
     name: form.name, folder: form.folder || undefined,
     host: form.host, port: form.port, username: form.username,
     authType: form.authType, keyPath: form.keyPath || undefined,
+    hasPassphrase: form.authType === 'privatekey' ? form.hasPassphrase : undefined,
     tags, color: form.color || undefined,
     protocol: form.protocol,
   }
@@ -359,17 +365,34 @@ async function remove(id: string) {
   if (confirm('Excluir este perfil?')) await sshStore.remove(id)
 }
 
+function needsCredentialPrompt(profile: SshProfile): boolean {
+  if ((profile.protocol ?? 'ssh') === 'ftp') return true
+  if (profile.authType === 'password') return true
+  return !!profile.hasPassphrase
+}
+
 function connect(profile: SshProfile) {
   if ((profile.protocol ?? 'ssh') === 'ftp') {
     openTransfer(profile)
     return
   }
+  if (!needsCredentialPrompt(profile)) {
+    connectTarget.value = profile
+    connectPassword.value = ''
+    void doConnect()
+    return
+  }
   connectPassword.value = ''
-  needPassphrase.value  = profile.authType === 'privatekey'
-  connectTarget.value   = profile
+  connectTarget.value = profile
 }
 
 function openTransfer(profile: SshProfile) {
+  if (profile.authType === 'privatekey' && !profile.hasPassphrase) {
+    transferTarget.value = profile
+    transferPassword.value = ''
+    void doTransfer()
+    return
+  }
   transferPassword.value = ''
   transferTarget.value = profile
 }
@@ -416,7 +439,7 @@ async function doConnect() {
       id: crypto.randomUUID(),
       host: profile.host, port: profile.port,
       username: profile.username,
-      password: profile.authType === 'password' ? connectPassword.value : '',
+      password: connectPassword.value,
       keyPath: profile.authType === 'privatekey' ? (profile.keyPath ?? '~/.ssh/id_rsa') : '',
       name: profile.name, color: profile.color, profileId: profile.id,
     })
@@ -484,17 +507,11 @@ async function doConnect() {
   padding: 9px 12px;
 }
 .profile-info { flex: 1; min-width: 0; }
-.profile-name { font-size: 13px; color: var(--text-primary); font-weight: 500; display: flex; align-items: center; gap: 4px; }
+.profile-name { font-size: 13px; color: var(--text-primary); font-weight: 500; display: flex; align-items: center; gap: 6px; }
 .proto-tag { font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px; }
 .proto-tag.sftp { background: #1f3d2a; color: #3fb950; }
 .proto-tag.ftp  { background: #3d2f1f; color: #d29922; }
-.profile-host { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
-.tags { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
-.tag {
-  font-size: 10px; padding: 1px 6px;
-  background: var(--bg-overlay); color: var(--text-muted); border-radius: 10px;
-}
-.profile-actions { display: flex; gap: 4px; }
+.profile-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .profile-actions button {
   background: none; border: none; color: var(--text-muted);
   cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 13px;
@@ -515,11 +532,14 @@ async function doConnect() {
 .form-overlay {
   position: fixed; inset: 0; background: #00000077; z-index: 60;
   display: flex; align-items: center; justify-content: center;
+  padding: 24px;
 }
 .form {
   background: var(--bg-surface); border: 1px solid var(--border-default);
-  border-radius: 12px; padding: 20px; width: 380px;
+  border-radius: 12px; padding: 20px; width: 380px; max-width: 100%;
+  max-height: calc(100vh - 48px);
   color: var(--text-primary); display: flex; flex-direction: column; gap: 12px;
+  overflow-y: auto;
 }
 .form h4 { font-size: 14px; margin-bottom: 4px; }
 .row { display: flex; flex-direction: column; gap: 4px; }
@@ -530,6 +550,14 @@ async function doConnect() {
   font-size: 13px; outline: none;
 }
 .row input:focus, .row select:focus { border-color: var(--accent-blue); }
+.check-row { gap: 2px; }
+.check-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px !important; color: var(--text-primary) !important;
+  cursor: pointer;
+}
+.check-label input { width: auto; margin: 0; }
+.hint { font-size: 11px; color: var(--text-muted); }
 .two-col { flex-direction: row; gap: 8px; align-items: flex-end; }
 .two-col > div { display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .file-row { display: flex; gap: 6px; }

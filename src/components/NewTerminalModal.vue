@@ -1,55 +1,77 @@
 <template>
   <div class="overlay" @click.self="emit('cancel')">
     <div class="modal">
-      <h3>Novo Terminal</h3>
-
-      <div class="section-label">Shell local</div>
-      <div class="shells">
-        <button
-          v-for="shell in shells"
-          :key="shell"
-          class="shell-btn"
-          @click="emit('confirm', { type: shell })"
-        >
-          <span class="shell-icon">{{ shellIcon(shell) }}</span>
-          <span>{{ shellTitle(shell) }}</span>
-        </button>
-      </div>
-
-      <template v-if="sshProfiles.length > 0">
-        <div class="section-label" style="margin-top: 16px">SSH</div>
-        <div class="shells">
-          <button
-            v-for="profile in sshProfiles"
-            :key="profile.id"
-            class="shell-btn ssh-btn"
-            :style="{ borderColor: profile.color }"
-            @click="emit('confirm', { type: 'ssh', profileId: profile.id })"
-          >
-            <span class="shell-icon">🔒</span>
-            <div style="text-align: left">
-              <div>{{ profile.name }}</div>
-              <div style="font-size: 11px; opacity: 0.6">{{ profile.username }}@{{ profile.host }}</div>
-            </div>
-          </button>
+      <!-- Prompt de senha / passphrase -->
+      <template v-if="authTarget">
+        <h3>{{ authTarget.authType === 'password' ? 'Senha' : 'Passphrase' }}</h3>
+        <p class="auth-hint">{{ authTarget.name }}</p>
+        <div class="auth-form">
+          <input
+            v-model="authPassword"
+            type="password"
+            :placeholder="authTarget.authType === 'password' ? 'Digite a senha' : 'Digite a passphrase'"
+            autofocus
+            @keydown.enter="confirmAuth"
+          />
+          <div class="actions">
+            <button @click="authTarget = null">Voltar</button>
+            <button class="btn-primary" @click="confirmAuth">Conectar</button>
+          </div>
         </div>
       </template>
 
-      <div class="actions">
-        <button @click="emit('cancel')">Cancelar</button>
-      </div>
+      <!-- Lista de shells / perfis -->
+      <template v-else>
+        <h3>Novo Terminal</h3>
+
+        <div class="modal-body">
+          <div class="section-label">Shell local</div>
+          <div class="shells">
+            <button
+              v-for="shell in shells"
+              :key="shell"
+              class="shell-btn"
+              @click="emit('confirm', { type: shell })"
+            >
+              <span class="shell-icon">{{ shellIcon(shell) }}</span>
+              <span>{{ shellTitle(shell) }}</span>
+            </button>
+          </div>
+
+          <template v-if="sshOnly.length > 0">
+            <div class="section-label" style="margin-top: 16px">SSH</div>
+            <div class="shells">
+              <button
+                v-for="profile in sshOnly"
+                :key="profile.id"
+                class="shell-btn ssh-btn"
+                :style="{ borderColor: profile.color }"
+                @click="onSelectSsh(profile)"
+              >
+                <span class="shell-icon">🔒</span>
+                <span>{{ profile.name }}</span>
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <div class="actions">
+          <button @click="emit('cancel')">Cancelar</button>
+        </div>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useSshProfilesStore } from '@/stores/ssh-profiles'
 import { storeToRefs } from 'pinia'
+import type { SshProfile } from '@/types'
 
 const emit = defineEmits<{
-  confirm: [opts: { type: string; profileId?: string }]
+  confirm: [opts: { type: string; profileId?: string; password?: string }]
   cancel: []
 }>()
 
@@ -57,10 +79,41 @@ const shells = ref<string[]>([])
 const sshStore = useSshProfilesStore()
 const { profiles: sshProfiles } = storeToRefs(sshStore)
 
+const authTarget = ref<SshProfile | null>(null)
+const authPassword = ref('')
+
+const sshOnly = computed(() =>
+  sshProfiles.value.filter((p) => (p.protocol ?? 'ssh') === 'ssh'),
+)
+
 onMounted(async () => {
   shells.value = await invoke<string[]>('get_available_shells')
   await sshStore.load()
 })
+
+function onSelectSsh(profile: SshProfile) {
+  if (profile.authType === 'password') {
+    authTarget.value = profile
+    authPassword.value = ''
+    return
+  }
+  if (profile.authType === 'privatekey' && profile.hasPassphrase) {
+    authTarget.value = profile
+    authPassword.value = ''
+    return
+  }
+  emit('confirm', { type: 'ssh', profileId: profile.id, password: '' })
+}
+
+function confirmAuth() {
+  const profile = authTarget.value
+  if (!profile) return
+  emit('confirm', {
+    type: 'ssh',
+    profileId: profile.id,
+    password: authPassword.value,
+  })
+}
 
 const ICONS: Record<string, string> = {
   cmd: '⊞', powershell: '💠', bash: '$', wsl: '🐧', zsh: '%', fish: '🐟',
@@ -83,6 +136,7 @@ function shellTitle(s: string) { return TITLES[s] ?? s }
   align-items: center;
   justify-content: center;
   z-index: 100;
+  padding: 24px;
 }
 
 .modal {
@@ -92,10 +146,44 @@ function shellTitle(s: string) { return TITLES[s] ?? s }
   padding: 24px;
   min-width: 340px;
   max-width: 480px;
+  width: 100%;
+  max-height: calc(100vh - 48px);
   color: #c9d1d9;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-h3 { font-size: 16px; margin-bottom: 16px; }
+h3 { font-size: 16px; margin-bottom: 16px; flex-shrink: 0; }
+
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.auth-hint {
+  font-size: 12px;
+  color: #6e7681;
+  margin: -8px 0 16px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-form input {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.auth-form input:focus { border-color: #58a6ff; }
 
 .section-label {
   font-size: 11px;
@@ -135,6 +223,8 @@ h3 { font-size: 16px; margin-bottom: 16px; }
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .actions button {
   background: #21262d;
@@ -145,4 +235,10 @@ h3 { font-size: 16px; margin-bottom: 16px; }
   cursor: pointer;
 }
 .actions button:hover { border-color: #58a6ff; }
+.btn-primary {
+  background: #238636 !important;
+  border-color: #2ea043 !important;
+  color: #fff !important;
+}
+.btn-primary:hover { background: #2ea043 !important; }
 </style>
