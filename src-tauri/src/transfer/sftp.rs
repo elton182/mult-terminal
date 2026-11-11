@@ -71,6 +71,7 @@ impl SftpConnection {
                 path: child,
                 is_dir: meta.is_dir(),
                 size: meta.size.unwrap_or(0),
+                modified: meta.mtime.map(|t| t as i64),
             });
         }
         entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
@@ -289,6 +290,11 @@ pub fn list_local_dir(path: &str) -> anyhow::Result<Vec<FileEntry>> {
             path: entry.path().to_string_lossy().to_string(),
             is_dir: meta.is_dir(),
             size: if meta.is_dir() { 0 } else { meta.len() },
+            modified: meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs() as i64),
         });
     }
     entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));

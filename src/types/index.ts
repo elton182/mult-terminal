@@ -37,6 +37,8 @@ export interface FileEntry {
   path: string
   is_dir: boolean
   size: number
+  /** Unix timestamp (seconds). null when unavailable. */
+  modified: number | null
 }
 
 export interface TransferProgress {

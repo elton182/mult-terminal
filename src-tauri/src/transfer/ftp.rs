@@ -3,7 +3,10 @@ use super::types::FileEntry;
 use anyhow::Context;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
+use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
+use suppaftp::list::File as ListFile;
 use suppaftp::FtpStream;
 
 const CHUNK_SIZE: usize = 256 * 1024;
@@ -63,24 +66,24 @@ impl FtpConnection {
         if remote != "/" {
             ftp.cwd(&remote).with_context(|| format!("Não foi possível entrar em {}", remote))?;
         }
-        let names = ftp.nlst(None).context("Falha ao listar diretório FTP")?;
+        let lines = ftp.list(None).context("Falha ao listar diretório FTP")?;
         let mut entries = Vec::new();
-        for name in names {
+        for line in lines {
+            let file = match ListFile::from_str(&line) {
+                Ok(f) => f,
+                Err(_) => continue,
+            };
+            let name = file.name().to_string();
             if name.is_empty() || name == "." || name == ".." {
                 continue;
             }
-            let is_dir = if ftp.cwd(&name).is_ok() {
-                let _ = ftp.cdup();
-                true
-            } else {
-                false
-            };
-            let size = if is_dir { 0 } else { ftp.size(&name).unwrap_or(0) as u64 };
+            let is_dir = file.is_directory();
             entries.push(FileEntry {
                 name: name.clone(),
                 path: join_remote(&remote, &name),
                 is_dir,
-                size,
+                size: if is_dir { 0 } else { file.size() as u64 },
+                modified: system_time_to_unix(file.modified()),
             });
         }
         if remote != "/" {
@@ -242,4 +245,10 @@ fn join_remote(base: &str, name: &str) -> String {
     } else {
         format!("{}/{}", base.trim_end_matches('/'), name)
     }
+}
+
+fn system_time_to_unix(t: SystemTime) -> Option<i64> {
+    t.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
 }

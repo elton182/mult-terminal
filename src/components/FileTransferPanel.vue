@@ -49,20 +49,40 @@
                 <button class="crumb go" title="Ir para caminho" @click="navigateLocal">→</button>
               </div>
             </div>
+            <div class="pane-controls">
+              <input
+                v-model="localSearch"
+                class="search-input"
+                type="search"
+                placeholder="Buscar..."
+                spellcheck="false"
+              />
+              <select v-model="localSort" class="sort-select" title="Ordenar por">
+                <option value="name-asc">Nome A→Z</option>
+                <option value="name-desc">Nome Z→A</option>
+                <option value="date-desc">Data (recente)</option>
+                <option value="date-asc">Data (antiga)</option>
+              </select>
+            </div>
             <div class="file-list" @dragover.prevent @drop.prevent="onDropToLocal">
               <div
-                v-for="entry in localEntries"
+                v-for="entry in displayedLocalEntries"
                 :key="entry.path"
                 class="file-row"
-                :class="{ selected: selectedLocal?.path === entry.path }"
+                :class="{ selected: selectedLocal?.path === entry.path, parent: entry.name === '..' }"
                 @click="selectLocal(entry)"
                 @dblclick="enterLocal(entry)"
               >
-                <span class="icon">{{ entry.is_dir ? '📁' : '📄' }}</span>
+                <span class="icon">{{ entry.name === '..' ? '⬆' : entry.is_dir ? '📁' : '📄' }}</span>
                 <span class="name">{{ entry.name }}</span>
-                <span class="size">{{ entry.is_dir ? '' : formatSize(entry.size) }}</span>
+                <span class="meta">
+                  <span v-if="entry.modified" class="date">{{ formatDate(entry.modified) }}</span>
+                  <span class="size">{{ entry.is_dir ? '' : formatSize(entry.size) }}</span>
+                </span>
               </div>
-              <div v-if="localEntries.length === 0" class="empty">Pasta vazia</div>
+              <div v-if="displayedLocalEntries.length === 0" class="empty">
+                {{ localSearch ? 'Nenhum resultado' : 'Pasta vazia' }}
+              </div>
             </div>
           </section>
 
@@ -84,24 +104,44 @@
                 <button class="crumb go" title="Ir para caminho" @click="navigateRemote">→</button>
               </div>
             </div>
+            <div class="pane-controls">
+              <input
+                v-model="remoteSearch"
+                class="search-input"
+                type="search"
+                placeholder="Buscar..."
+                spellcheck="false"
+              />
+              <select v-model="remoteSort" class="sort-select" title="Ordenar por">
+                <option value="name-asc">Nome A→Z</option>
+                <option value="name-desc">Nome Z→A</option>
+                <option value="date-desc">Data (recente)</option>
+                <option value="date-asc">Data (antiga)</option>
+              </select>
+            </div>
             <div
               class="file-list drop-zone"
               @dragover.prevent
               @drop.prevent="onDropToRemote"
             >
               <div
-                v-for="entry in remoteEntries"
+                v-for="entry in displayedRemoteEntries"
                 :key="entry.path"
                 class="file-row"
-                :class="{ selected: selectedRemote?.path === entry.path }"
+                :class="{ selected: selectedRemote?.path === entry.path, parent: entry.name === '..' }"
                 @click="selectRemote(entry)"
                 @dblclick="enterRemote(entry)"
               >
-                <span class="icon">{{ entry.is_dir ? '📁' : '📄' }}</span>
+                <span class="icon">{{ entry.name === '..' ? '⬆' : entry.is_dir ? '📁' : '📄' }}</span>
                 <span class="name">{{ entry.name }}</span>
-                <span class="size">{{ entry.is_dir ? '' : formatSize(entry.size) }}</span>
+                <span class="meta">
+                  <span v-if="entry.modified" class="date">{{ formatDate(entry.modified) }}</span>
+                  <span class="size">{{ entry.is_dir ? '' : formatSize(entry.size) }}</span>
+                </span>
               </div>
-              <div v-if="remoteEntries.length === 0" class="empty">Pasta vazia</div>
+              <div v-if="displayedRemoteEntries.length === 0" class="empty">
+                {{ remoteSearch ? 'Nenhum resultado' : 'Pasta vazia' }}
+              </div>
             </div>
           </section>
         </div>
@@ -117,15 +157,29 @@ import type { FileEntry } from '@/types'
 
 const store = useFileTransferStore()
 
+type SortOption = 'name-asc' | 'name-desc' | 'date-asc' | 'date-desc'
+
+const PARENT_ENTRY: FileEntry = {
+  name: '..',
+  path: '..',
+  is_dir: true,
+  size: 0,
+  modified: null,
+}
+
 const localPath = ref('')
 const remotePath = ref('/')
 const localPathInput = ref('')
 const remotePathInput = ref('/')
-const localEntries = ref<FileEntry[]>([])
-const remoteEntries = ref<FileEntry[]>([])
+const localEntriesRaw = ref<FileEntry[]>([])
+const remoteEntriesRaw = ref<FileEntry[]>([])
 const selectedLocal = ref<FileEntry | null>(null)
 const selectedRemote = ref<FileEntry | null>(null)
 const busy = ref(false)
+const localSearch = ref('')
+const remoteSearch = ref('')
+const localSort = ref<SortOption>('name-asc')
+const remoteSort = ref<SortOption>('name-asc')
 
 const progressPercent = computed(() => {
   const p = store.progress
@@ -140,6 +194,47 @@ const progressLabel = computed(() => {
   return `${verb} ${p.file_name}`
 })
 
+function canGoLocalParent(): boolean {
+  const p = localPath.value.replace(/\\/g, '/')
+  const isWindowsRoot = /^[A-Za-z]:\/?$/.test(p)
+  return p !== '/' && !isWindowsRoot
+}
+
+function canGoRemoteParent(): boolean {
+  return remotePath.value !== '/'
+}
+
+function sortAndFilter(entries: FileEntry[], sort: SortOption, search: string): FileEntry[] {
+  let list = [...entries]
+  const q = search.trim().toLowerCase()
+  if (q) {
+    list = list.filter((e) => e.name.toLowerCase().includes(q))
+  }
+  const [key, dir] = sort.split('-') as ['name' | 'date', 'asc' | 'desc']
+  list.sort((a, b) => {
+    const dirCmp = Number(b.is_dir) - Number(a.is_dir)
+    if (dirCmp !== 0) return dirCmp
+    let cmp = 0
+    if (key === 'date') {
+      cmp = (a.modified ?? 0) - (b.modified ?? 0)
+    } else {
+      cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    }
+    return dir === 'asc' ? cmp : -cmp
+  })
+  return list
+}
+
+const displayedLocalEntries = computed(() => {
+  const parent = canGoLocalParent() ? [PARENT_ENTRY] : []
+  return [...parent, ...sortAndFilter(localEntriesRaw.value, localSort.value, localSearch.value)]
+})
+
+const displayedRemoteEntries = computed(() => {
+  const parent = canGoRemoteParent() ? [PARENT_ENTRY] : []
+  return [...parent, ...sortAndFilter(remoteEntriesRaw.value, remoteSort.value, remoteSearch.value)]
+})
+
 watch(
   () => store.sessionId,
   async (id) => {
@@ -150,6 +245,8 @@ watch(
     remotePathInput.value = remotePath.value
     selectedLocal.value = null
     selectedRemote.value = null
+    localSearch.value = ''
+    remoteSearch.value = ''
     await refreshBoth()
   },
 )
@@ -163,12 +260,12 @@ async function refreshBoth() {
 
 async function refreshLocal() {
   if (!localPath.value) return
-  localEntries.value = await store.listLocal(localPath.value)
+  localEntriesRaw.value = await store.listLocal(localPath.value)
 }
 
 async function refreshRemote() {
   if (!store.sessionId) return
-  remoteEntries.value = await store.listRemote(remotePath.value)
+  remoteEntriesRaw.value = await store.listRemote(remotePath.value)
 }
 
 function normalizeRemotePath(input: string): string {
@@ -189,6 +286,7 @@ async function navigateLocal() {
     await store.listLocal(path)
     localPath.value = path
     selectedLocal.value = null
+    localSearch.value = ''
     await refreshLocal()
   } catch (e) {
     alert(`Caminho local inválido:\n${e}`)
@@ -202,6 +300,7 @@ async function navigateRemote() {
     await store.listRemote(path)
     remotePath.value = path
     selectedRemote.value = null
+    remoteSearch.value = ''
     await refreshRemote()
   } catch (e) {
     alert(`Caminho remoto inválido:\n${e}`)
@@ -218,16 +317,26 @@ function selectRemote(entry: FileEntry) {
 }
 
 function enterLocal(entry: FileEntry) {
+  if (entry.name === '..') {
+    goLocalParent()
+    return
+  }
   if (!entry.is_dir) return
   localPath.value = entry.path
   selectedLocal.value = null
+  localSearch.value = ''
   refreshLocal()
 }
 
 function enterRemote(entry: FileEntry) {
+  if (entry.name === '..') {
+    goRemoteParent()
+    return
+  }
   if (!entry.is_dir) return
   remotePath.value = entry.path
   selectedRemote.value = null
+  remoteSearch.value = ''
   refreshRemote()
 }
 
@@ -243,6 +352,7 @@ function goLocalParent() {
       : '/' + parts.join('/')
   }
   selectedLocal.value = null
+  localSearch.value = ''
   refreshLocal()
 }
 
@@ -252,6 +362,7 @@ function goRemoteParent() {
   parts.pop()
   remotePath.value = parts.length ? '/' + parts.join('/') : '/'
   selectedRemote.value = null
+  remoteSearch.value = ''
   refreshRemote()
 }
 
@@ -267,7 +378,7 @@ function joinLocal(name: string) {
 }
 
 async function uploadSelected() {
-  if (!selectedLocal.value || selectedLocal.value.is_dir) return
+  if (!selectedLocal.value || selectedLocal.value.is_dir || selectedLocal.value.name === '..') return
   busy.value = true
   try {
     const remote = joinRemote(selectedLocal.value.name)
@@ -281,7 +392,7 @@ async function uploadSelected() {
 }
 
 async function downloadSelected() {
-  if (!selectedRemote.value || selectedRemote.value.is_dir) return
+  if (!selectedRemote.value || selectedRemote.value.is_dir || selectedRemote.value.name === '..') return
   busy.value = true
   try {
     const local = joinLocal(selectedRemote.value.name)
@@ -336,7 +447,7 @@ async function mkdirRemote() {
 }
 
 async function deleteRemote() {
-  if (!selectedRemote.value) return
+  if (!selectedRemote.value || selectedRemote.value.name === '..') return
   const label = selectedRemote.value.is_dir ? 'pasta' : 'arquivo'
   if (!confirm(`Excluir ${label} "${selectedRemote.value.name}"?`)) return
   busy.value = true
@@ -355,6 +466,12 @@ function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function formatDate(ts: number) {
+  const d = new Date(ts * 1000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 </script>
 
@@ -484,6 +601,41 @@ function formatSize(bytes: number) {
 }
 .path-input:focus { border-color: var(--accent-blue); color: var(--text-primary); }
 
+.pane-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-deep);
+}
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 0 8px;
+  border-radius: 3px;
+  outline: none;
+}
+.search-input:focus { border-color: var(--accent-blue); color: var(--text-primary); }
+.sort-select {
+  height: 22px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 0 6px;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sort-select:focus { border-color: var(--accent-blue); }
+
 .file-list { flex: 1; overflow-y: auto; padding: 4px; }
 .drop-zone { outline: none; }
 .file-row {
@@ -492,10 +644,13 @@ function formatSize(bytes: number) {
   padding: 4px 8px; border-radius: 4px; cursor: pointer;
   font-size: 12px; color: var(--text-secondary);
 }
+.file-row.parent { color: var(--text-muted); font-style: italic; }
 .file-row:hover { background: var(--bg-overlay); }
 .file-row.selected { background: #1f3d5e; color: var(--text-primary); }
 .icon { text-align: center; }
 .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.size { font-size: 10px; color: var(--text-muted); }
+.meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.date { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.size { font-size: 10px; color: var(--text-muted); min-width: 48px; text-align: right; }
 .empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 12px; }
 </style>

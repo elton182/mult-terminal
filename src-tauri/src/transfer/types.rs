@@ -6,4 +6,6 @@ pub struct FileEntry {
     pub path: String,
     pub is_dir: bool,
     pub size: u64,
+    /// Unix timestamp (seconds). None when unavailable.
+    pub modified: Option<i64>,
 }
